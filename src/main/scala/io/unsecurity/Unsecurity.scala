@@ -1,40 +1,43 @@
 package io.unsecurity
 
+import cats.effect.IO
+import no.scalabin.http4s.directives.Directive
+
 object Unsecurity {
-  def safe: Safe = ???
-  def unsafe: Unsafe = ???
+  def safe[F[_]]: Safe[F]     = ???
+  def unsafe[F[_]]: Unsafe[F] = ???
 }
 
-class Route(
-             path: String,
-             queryParams: List[String],
-             accepts: List[String],
-             produces: List[String],
-             authorization: Option[String],
-             method: String,
-             f: () => String
-           )
+class Route[F[_]](
+    path: String,
+    queryParams: List[String],
+    accepts: List[String],
+    produces: List[String],
+    authorization: Option[String],
+    method: String,
+    f: () => String
+)
 
-class Unsafe {
+class Unsafe[F[_]] {
   def route(path: String) = ???
 }
 
-class Safe {
-  def route(path: String): SafeRoute = ???
+class Safe[F[_]] {
+  def route(path: String): SafeRoute[F] = ???
 }
 
-class SafeRoute(
-                 path: String,
-                 queryParams: List[String],
-                 accepts: List[String],
-                 produces: List[String],
-                 authorization: Option[String]
-               ) extends Safe {
-  def queryParams(param: String): SafeRoute = ???
-  def accepts(mediaType: String*): SafeRoute = ???
-  def produces(mediaType: String*): SafeRoute = ???
-  def authorization[A](authRule: SecurityPredicate[A]): SafeRoute = ???
-  def GET(f: () => String): Route = ???
+class SafeRoute[F[_]](
+    path: String,
+    queryParams: List[String],
+    accepts: List[String],
+    produces: List[String],
+    authorization: Option[String]
+) extends Safe {
+  def queryParams(param: String): SafeRoute[F]                       = ???
+  def accepts(mediaType: String*): SafeRoute[F]                      = ???
+  def produces(mediaType: String*): SafeRoute[F]                     = ???
+  def authorization[A](authRule: SecurityPredicate[A]): SafeRoute[F] = ???
+  def GET[A](f: () => Directive[F, A]): Route[F]                     = ???
 }
 
 class SecurityPredicate[-A](predicate: A => Boolean) {
@@ -48,10 +51,11 @@ class SecurityPredicate[-A](predicate: A => Boolean) {
 }
 
 object Test {
-  private val unsecurity: Route = Unsecurity.safe
+  val aRoute: Route[IO] = Unsecurity
+    .safe[IO]
     .route("")
-    .GET { () =>
-      ""
+    .GET[String] { () =>
+      Directive.success("Hello")
     }
 }
 
@@ -67,4 +71,3 @@ unsecurity
       //body
     }
  */
-
