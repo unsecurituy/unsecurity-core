@@ -1,3 +1,5 @@
+import sbt.Keys.libraryDependencies
+
 organization := "io.unsecurity"
 
 name := "unsecurity-core"
@@ -15,5 +17,7 @@ val directivesVersion = "0.5.1"
 libraryDependencies := Seq(
   "io.circe"           %% "circe-parser"        % circeVersion,
   "org.http4s"         %% "http4s-blaze-client" % http4sVersion,
-  "no.scalabin.http4s" %% "http4s-directives"   % directivesVersion
+  "no.scalabin.http4s" %% "http4s-directives"   % directivesVersion,
+
+  "org.scalatest"      %% "scalatest"           % "3.0.5" % Test
 )
