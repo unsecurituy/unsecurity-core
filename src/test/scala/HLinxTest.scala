@@ -1,24 +1,40 @@
 import io.unsecurity.hlinx.HLinx._
+import org.scalatest.FunSpec
 
-import org.scalatest.FunSuite
+class HLinxTest extends FunSpec {
 
-class HLinxTest extends FunSuite {
+  describe("StaticFragment") {
 
-  test("match /api") {
-    val link = Root / "api"
+    describe("Root / foo / bar") {
+      val link: StaticFragment = Root / "foo" / "bar"
 
-    assert(link.matches("/api")._1)
+      it("should not match /foo") {
+        assert(!link.matches("/foo"))
+      }
+
+      it("should match /foo/bar") {
+        assert(link.matches("/foo/bar"))
+      }
+
+      it("should match foo/bar") {
+        assert(link.matches("foo/bar"))
+      }
+
+      it("should not match /foo/bar/baz") {
+        assert(!link.matches("/foo/bar/baz"))
+      }
+    }
   }
 
-  test("match /api/fjon") {
-    val link = Root / "api" / "fjon"
-
-    assert(link.matches("/api/fjon")._1)
-  }
-
-  test("matching variable") {
-    val link = Root / "api" / Param[String]("var1")
-
-    assert(link.matches("/api/fjon")._1)
-  }
+//  test("match /api/fjon") {
+//    val link = Root / "api" / "fjon"
+//
+//    assert(link.matches("/api/fjon")._1)
+//  }
+//
+//  test("matching variable") {
+//    val link = Root / "api" / Param[String]("var1")
+//
+//    assert(link.matches("/api/fjon")._1)
+//  }
 }
