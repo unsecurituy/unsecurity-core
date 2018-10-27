@@ -17,10 +17,6 @@ object HLinx {
   case class Param[A: ParamConverter](name: String)
 
   sealed trait LinkFragment[A <: HList] {
-    def matches(s: String): (Boolean, Vector[String])
-
-    def internalMatches(fs: Vector[String]): (Boolean, Vector[String])
-
     protected def split(s: String): Vector[String] =
       s.split("/").toVector.filter(_.nonEmpty)
   }
@@ -34,16 +30,19 @@ object HLinx {
     def /[A](p: Param[A]): VarFragment[A, HNil] =
       VarFragment(this, Vector.empty, p)
 
-    def matches(s: String): (Boolean, Vector[String]) = {
-      internalMatches(split(s))
+    def matches(s: String): Boolean = {
+      val (parentMatch, leftovers) = internalMatches(split(s))
+      parentMatch && leftovers.isEmpty
     }
 
-    override def internalMatches(fs: Vector[String]): (Boolean, Vector[String]) = {
-
+    def internalMatches(fs: Vector[String]): (Boolean, Vector[String]) = {
       val g = fs zip fragments
 
-      val isMatch = g.forall { case (a, b) => a == b }
-      (isMatch, if (isMatch) fs.drop(g.size) else Vector.empty)
+      if (g.size < fragments.size) (false, fs.drop(g.size))
+      else {
+        val isMatch = g.forall { case (a, b) => a == b }
+        (isMatch, if (isMatch) fs.drop(g.size) else Vector.empty)
+      }
     }
 
   }
@@ -54,18 +53,5 @@ object HLinx {
 
     def /[C](p: Param[C]): VarFragment[C, A :: B] =
       VarFragment(this, Vector.empty, p)
-
-    override def matches(s: String): (Boolean, Vector[String]) = {
-      val fs = split(s)
-
-      val (parentMatch, rest): (Boolean, Vector[String]) =
-        parent.internalMatches(fs)
-
-      println(parentMatch)
-      println(rest)
-      ???
-    }
-
-    override def internalMatches(fs: Vector[String]): (Boolean, Vector[String]) = ???
   }
 }
