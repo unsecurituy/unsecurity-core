@@ -3,24 +3,46 @@ import org.scalatest.FunSpec
 
 class HLinxTest extends FunSpec {
 
+  val r = Root / Param[String]("fisk")
+
   describe("StaticFragment") {
     describe("Root / foo / bar") {
       val link: StaticFragment = Root / "foo" / "bar"
 
-      it("should not match /foo") {
+      it("do not matches /foo") {
         assert(!link.matches("/foo"))
       }
 
-      it("should match /foo/bar") {
+      it("matches /foo/bar") {
         assert(link.matches("/foo/bar"))
       }
 
-      it("should match foo/bar") {
+      it("matches foo/bar") {
         assert(link.matches("foo/bar"))
       }
 
-      it("should not match /foo/bar/baz") {
+      it("do not matches /foo/bar/baz") {
         assert(!link.matches("/foo/bar/baz"))
+      }
+
+      it("overlap /foo/bar") {
+        assert(link.overlaps(Root / "foo" / "bar"))
+      }
+
+      it("do not overlap /foo/bar/baz") {
+        assert(link.overlaps(Root / "foo" / "bar"))
+      }
+
+      it("do not overlap /foo/bar/Param[String)(baz)") {
+        assert(!link.overlaps(Root / "foo" / "bar" / Param[String]("baz")))
+      }
+
+      it("overlap /foo/Param[String)(bar)") {
+        assert(link.overlaps(Root / "foo" / Param[String]("bar")))
+      }
+
+      it("do not overlap /foo/Param[String)(bar)/baz") {
+        assert(!link.overlaps(Root / "foo" / Param[String]("bar") / "baz"))
       }
     }
   }
@@ -29,15 +51,15 @@ class HLinxTest extends FunSpec {
     describe("Root / foo / Param[String](bar)") {
       val link: VarFragment[String, HNil] = Root / "foo" / Param[String]("bar")
 
-      it("should match /foo/foo") {
+      it("matches /foo/foo") {
         assert(link.matches("/foo/foo"))
       }
 
-      it("should match /foo/1") {
+      it("matches /foo/1") {
         assert(link.matches("/foo/1"))
       }
 
-      it("should not match /foo") {
+      it("do not matches /foo") {
         assert(!link.matches("/foo"))
       }
     }
@@ -45,19 +67,19 @@ class HLinxTest extends FunSpec {
     describe("Root / foo / Param[String](bar) / baz") {
       val link: VarFragment[String, HNil] = Root / "foo" / Param[String]("bar") / "baz"
 
-      it("should match /foo/1/baz") {
+      it("matches /foo/1/baz") {
         assert(link.matches("/foo/1/baz"))
       }
 
-      it("should not match /foo/1") {
+      it("do not matches /foo/1") {
         assert(!link.matches("/foo/1"))
       }
 
-      it("should not match /foo/1/foo") {
+      it("do not matches /foo/1/foo") {
         assert(!link.matches("/foo/1/foo"))
       }
 
-      it("should not match /foo/1/baz/baz") {
+      it("do not matches /foo/1/baz/baz") {
         assert(!link.matches("/foo/1/baz/baz"))
       }
     }
