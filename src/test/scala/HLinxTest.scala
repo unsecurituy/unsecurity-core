@@ -5,82 +5,92 @@ class HLinxTest extends FunSpec {
 
   val r = Root / Param[String]("fisk")
 
-  describe("StaticFragment") {
-    describe("Root / foo / bar") {
-      val link: StaticFragment = Root / "foo" / "bar"
+  describe("matches") {
+    describe("StaticFragment") {
+      describe("Root / foo / bar") {
+        val link: StaticFragment = Root / "foo" / "bar"
 
-      it("do not matches /foo") {
-        assert(!link.matches("/foo"))
+        it("do not matches /foo") {
+          assert(!link.matches("/foo"))
+        }
+
+        it("matches /foo/bar") {
+          assert(link.matches("/foo/bar"))
+        }
+
+        it("matches foo/bar") {
+          assert(link.matches("foo/bar"))
+        }
+
+        it("do not matches /foo/bar/baz") {
+          assert(!link.matches("/foo/bar/baz"))
+        }
+      }
+    }
+
+    describe("VariableFragment") {
+      describe("Root / foo / Param[String](bar)") {
+        val link: VarFragment[String, HNil] = Root / "foo" / Param[String]("bar")
+
+        it("matches /foo/foo") {
+          assert(link.matches("/foo/foo"))
+        }
+
+        it("matches /foo/1") {
+          assert(link.matches("/foo/1"))
+        }
+
+        it("do not matches /foo") {
+          assert(!link.matches("/foo"))
+        }
       }
 
-      it("matches /foo/bar") {
-        assert(link.matches("/foo/bar"))
-      }
+      describe("Root / foo / Param[String](bar) / baz") {
+        val link: VarFragment[String, HNil] = Root / "foo" / Param[String]("bar") / "baz"
 
-      it("matches foo/bar") {
-        assert(link.matches("foo/bar"))
-      }
+        it("matches /foo/1/baz") {
+          assert(link.matches("/foo/1/baz"))
+        }
 
-      it("do not matches /foo/bar/baz") {
-        assert(!link.matches("/foo/bar/baz"))
-      }
+        it("do not matches /foo/1") {
+          assert(!link.matches("/foo/1"))
+        }
 
-      it("overlap /foo/bar") {
-        assert(link.overlaps(Root / "foo" / "bar"))
-      }
+        it("do not matches /foo/1/foo") {
+          assert(!link.matches("/foo/1/foo"))
+        }
 
-      it("do not overlap /foo/bar/baz") {
-        assert(link.overlaps(Root / "foo" / "bar"))
-      }
-
-      it("do not overlap /foo/bar/Param[String)(baz)") {
-        assert(!link.overlaps(Root / "foo" / "bar" / Param[String]("baz")))
-      }
-
-      it("overlap /foo/Param[String)(bar)") {
-        assert(link.overlaps(Root / "foo" / Param[String]("bar")))
-      }
-
-      it("do not overlap /foo/Param[String)(bar)/baz") {
-        assert(!link.overlaps(Root / "foo" / Param[String]("bar") / "baz"))
+        it("do not matches /foo/1/baz/baz") {
+          assert(!link.matches("/foo/1/baz/baz"))
+        }
       }
     }
   }
 
-  describe("VariableFragment") {
-    describe("Root / foo / Param[String](bar)") {
-      val link: VarFragment[String, HNil] = Root / "foo" / Param[String]("bar")
+  describe("overlaps") {
+    describe("StaticFragment") {
+      describe("Root / foo / bar") {
+        val link: StaticFragment = Root / "foo" / "bar"
 
-      it("matches /foo/foo") {
-        assert(link.matches("/foo/foo"))
-      }
+        it("overlap /foo/bar") {
+          assert(link.overlaps(Root / "foo" / "bar"))
+        }
 
-      it("matches /foo/1") {
-        assert(link.matches("/foo/1"))
-      }
+        it("do not overlap /foo/bar/baz") {
+          assert(link.overlaps(Root / "foo" / "bar"))
+        }
 
-      it("do not matches /foo") {
-        assert(!link.matches("/foo"))
-      }
-    }
+        it("do not overlap /foo/bar/Param[String)(baz)") {
+          assert(!link.overlaps(Root / "foo" / "bar" / Param[String]("baz")))
+        }
 
-    describe("Root / foo / Param[String](bar) / baz") {
-      val link: VarFragment[String, HNil] = Root / "foo" / Param[String]("bar") / "baz"
+        it("overlap /foo/Param[String)(bar)") {
+          assert(link.overlaps(Root / "foo" / Param[String]("bar")))
+        }
 
-      it("matches /foo/1/baz") {
-        assert(link.matches("/foo/1/baz"))
-      }
-
-      it("do not matches /foo/1") {
-        assert(!link.matches("/foo/1"))
-      }
-
-      it("do not matches /foo/1/foo") {
-        assert(!link.matches("/foo/1/foo"))
-      }
-
-      it("do not matches /foo/1/baz/baz") {
-        assert(!link.matches("/foo/1/baz/baz"))
+        it("do not overlap /foo/Param[String)(bar)/baz") {
+          assert(!link.overlaps(Root / "foo" / Param[String]("bar") / "baz"))
+        }
       }
     }
   }
