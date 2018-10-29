@@ -7,22 +7,23 @@ object HLinx {
     def ::[T](v: T): HCons[T, HNil] = HCons(v, this)
   }
   val HNil: HNil = new HNil
-
   case class HCons[H, T <: HList](head: H, tail: T) extends HList {
     def ::[V](v: V): HCons[V, H :: T] = HCons(v, this)
   }
-
   type ::[H, T <: HList] = HCons[H, T]
 
   case class Param[A: ParamConverter](name: String)
 
+  sealed trait Segment
+  case class Static(name: String) extends Segment
+  case object Var                 extends Segment
+
   sealed trait LinkFragment[A <: HList] {
-    val didNotMatch   = (false, Vector.empty[String])
-    val didNotOverlap = (false, Vector.empty, Vector.empty)
+    val didNotMatch = (false, Vector.empty[String])
 
     def staticFragments: Vector[String]
 
-    def matches(s: String): Boolean = {
+    final def matches(s: String): Boolean = {
       val (parentMatch, leftOvers) = internalMatches(split(s))
       parentMatch && leftOvers.isEmpty
     }
@@ -42,61 +43,30 @@ object HLinx {
 
     protected def split(s: String): Vector[String] =
       s.split("/").toVector.filter(_.nonEmpty)
+
+    def overlaps[B <: HList](that: LinkFragment[B]): Boolean = {
+      val as: Vector[Segment] = toSegments
+      val bs: Vector[Segment] = that.toSegments
+
+      if (as.size != bs.size) false
+      else {
+        (as zip bs).foldLeft(true) {
+          case (acc, t) =>
+            acc && (t match {
+              case (Var, _)               => true
+              case (_, Var)               => true
+              case (Static(a), Static(b)) => a == b
+            })
+        }
+      }
+    }
+
+    def toSegments: Vector[Segment]
   }
 
   val Root = StaticFragment(Vector.empty)
 
   case class StaticFragment(staticFragments: Vector[String]) extends LinkFragment[HNil] {
-    def overlaps(fragment: StaticFragment): Boolean = {
-      val (doOverlap, thisLeftOvers, thatLeftOvers) = iol(fragment)
-
-      doOverlap && thisLeftOvers.isEmpty && thatLeftOvers.isEmpty
-    }
-
-    def overlaps[A, B <: HList](fragment: VarFragment[A, B]): Boolean = {
-      val (doOverlap, thisLeftOvers, thatLeftOvers) = iol(fragment)
-
-      doOverlap && thisLeftOvers.isEmpty && thatLeftOvers.isEmpty
-    }
-
-    def iol[A <: HList](fragment: LinkFragment[A]): (Boolean, Vector[String], Vector[String]) = {
-      fragment match {
-        case sf: StaticFragment    => internalOverlaps(sf)
-        case vf: VarFragment[_, A] => internalOverlaps(vf)
-      }
-    }
-
-    def internalOverlaps(fragment: StaticFragment): (Boolean, Vector[String], Vector[String]) = {
-      if (staticFragments.size == fragment.staticFragments.size) {
-        if (staticFragments == fragment.staticFragments) {
-          (true, Vector.empty, Vector.empty)
-        } else didNotOverlap
-      } else if (staticFragments.size > fragment.staticFragments.size) {
-        if (staticFragments.startsWith(fragment.staticFragments)) {
-          (true, staticFragments.drop(fragment.staticFragments.size), Vector.empty)
-        } else {
-          didNotOverlap
-        }
-      } else {
-        if (fragment.staticFragments.startsWith(staticFragments)) {
-          (true, Vector(), fragment.staticFragments.drop(staticFragments.size))
-        } else {
-          didNotOverlap
-        }
-      }
-    }
-
-    // Static(/foo/bar)
-    // Static(/foo) / Var(Param[String]) / "jodle"
-    def internalOverlaps[A, B <: HList](fragment: VarFragment[A, B]): (Boolean, Vector[String], Vector[String]) = {
-      val tuple = iol(fragment.parent)
-      tuple match {
-        case (false, _, _)                 => didNotOverlap
-        case (true, Vector(), _)           => didNotOverlap
-        case (true, h +: t, thatLeftOvers) => (true, t, thatLeftOvers ++ fragment.staticFragments)
-      }
-    }
-
     def /(s: String): StaticFragment =
       StaticFragment(staticFragments ++ split(s))
 
@@ -105,6 +75,8 @@ object HLinx {
 
     override def internalMatches(fs: Vector[String]): (Boolean, Vector[String]) =
       matchesStatic(fs)
+
+    def toSegments: Vector[Segment] = staticFragments.map(Static)
   }
 
   case class VarFragment[A, B <: HList](parent: LinkFragment[B], staticFragments: Vector[String], param: Param[A])
@@ -120,6 +92,10 @@ object HLinx {
 
       if (parentMatches && leftOvers.nonEmpty) matchesStatic(leftOvers.tail)
       else didNotMatch
+    }
+
+    override def toSegments: Vector[Segment] = {
+      (parent.toSegments :+ Var) ++ staticFragments.map(Static)
     }
   }
 }

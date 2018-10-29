@@ -3,8 +3,6 @@ import org.scalatest.FunSpec
 
 class HLinxTest extends FunSpec {
 
-  val r = Root / Param[String]("fisk")
-
   describe("matches") {
     describe("StaticFragment") {
       describe("Root / foo / bar") {
@@ -80,8 +78,8 @@ class HLinxTest extends FunSpec {
           assert(link.overlaps(Root / "foo" / "bar"))
         }
 
-        it("do not overlap /foo/bar/Param[String)(baz)") {
-          assert(!link.overlaps(Root / "foo" / "bar" / Param[String]("baz")))
+        it("do not overlap /foo/bar/Param[String]") {
+          assert(!link.overlaps(Root / "foo" / "bar" / Param[String]("")))
         }
 
         it("overlap /foo/Param[String)(bar)") {
@@ -90,6 +88,24 @@ class HLinxTest extends FunSpec {
 
         it("do not overlap /foo/Param[String)(bar)/baz") {
           assert(!link.overlaps(Root / "foo" / Param[String]("bar") / "baz"))
+        }
+      }
+    }
+
+    describe("VarFragment") {
+      describe("Root / Param[String] / bar") {
+        val link: VarFragment[String, HNil] = Root / Param[String]("") / "bar"
+
+        it("overlap /foo/bar") {
+          assert(link.overlaps(Root / "foo" / "bar"))
+        }
+
+        it("overlap /foo/Param[String]") {
+          assert(link.overlaps(Root / "foo" / Param[String]("")))
+        }
+
+        it("do not overlap /foo/Param[String]/baz") {
+          assert(!link.overlaps(Root / "foo" / Param[String]("") / "baz"))
         }
       }
     }
