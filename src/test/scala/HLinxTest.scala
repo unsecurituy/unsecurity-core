@@ -3,63 +3,68 @@ import org.scalatest.FunSpec
 
 class HLinxTest extends FunSpec {
 
-  describe("matches") {
+  describe("capture") {
     describe("StaticFragment") {
       describe("Root / foo / bar") {
         val link: StaticFragment = Root / "foo" / "bar"
 
-        it("do not matches /foo") {
-          assert(!link.matches("/foo"))
+        it("should match equal path") {
+          assert(link.capture("/foo/bar").isDefined)
         }
 
-        it("matches /foo/bar") {
-          assert(link.matches("/foo/bar"))
+        it("should not match shorter path") {
+          assert(link.capture("/foo") === None)
         }
 
-        it("matches foo/bar") {
-          assert(link.matches("foo/bar"))
+        it("should not match different path") {
+          assert(link.capture("foo/baz") === None)
         }
 
-        it("do not matches /foo/bar/baz") {
-          assert(!link.matches("/foo/bar/baz"))
+        it("should not match longer path") {
+          assert(link.capture("/foo/bar/baz") === None)
         }
       }
     }
 
-    describe("VariableFragment") {
-      describe("Root / foo / Param[String](bar)") {
-        val link: VarFragment[String, HNil] = Root / "foo" / Param[String]("bar")
+    describe("VarFragment") {
+      describe("with one param") {
+        val link = Root / "foo" / Param[String]("str") / "bar"
 
-        it("matches /foo/foo") {
-          assert(link.matches("/foo/foo"))
+        it("should not match shorter path") {
+          assert(link.capture("/foo") === None)
         }
 
-        it("matches /foo/1") {
-          assert(link.matches("/foo/1"))
+        it("should not match longer path") {
+          assert(link.capture("/foo/str/bar/longer") === None)
         }
 
-        it("do not matches /foo") {
-          assert(!link.matches("/foo"))
+        it("should not match different path") {
+          assert(link.capture("/bar/str/foo") === None)
+        }
+
+        it("should not match if static part of varfragment doesn't match") {
+          assert(link.capture("/foo/str") === None)
+        }
+
+        it("should match equal path") {
+          assert(link.capture("/foo/str/bar") === Some(Right("str")))
         }
       }
 
-      describe("Root / foo / Param[String](bar) / baz") {
-        val link: VarFragment[String, HNil] = Root / "foo" / Param[String]("bar") / "baz"
+      describe("with two params") {
+        val link: LinkFragment[Int :: String :: HNil] =
+          Root / "foo" / Param[String]("str") / Param[Int]("int") / "bar"
 
-        it("matches /foo/1/baz") {
-          assert(link.matches("/foo/1/baz"))
+        it("should not match shorter path") {
+          assert(link.capture("/foo") === None)
         }
 
-        it("do not matches /foo/1") {
-          assert(!link.matches("/foo/1"))
+        it("should not match if static in varfragment doesn't match") {
+          assert(link.capture("/foo/str/1/baz") === None)
         }
 
-        it("do not matches /foo/1/foo") {
-          assert(!link.matches("/foo/1/foo"))
-        }
-
-        it("do not matches /foo/1/baz/baz") {
-          assert(!link.matches("/foo/1/baz/baz"))
+        it("should match equal path") {
+          assert(link.capture("/foo/str/1/bar") === Some((Right("str"), Right(1))))
         }
       }
     }
@@ -106,71 +111,6 @@ class HLinxTest extends FunSpec {
 
         it("do not overlap /foo/Param[String]/baz") {
           assert(!link.overlaps(Root / "foo" / Param[String]("") / "baz"))
-        }
-      }
-    }
-  }
-
-  describe("capture") {
-    describe("StaticFragment") {
-      val link: StaticFragment = Root / "foo"
-
-      it("should not match shorter path") {
-        assert(link.capture("/") === None)
-      }
-
-      it("should not match longer path") {
-        assert(link.capture("/foo/foo") === None)
-      }
-
-      it("should not match different path") {
-        assert(link.capture("/bar") === None)
-      }
-
-      it("should match equal path") {
-        assert(link.capture("/foo") === Some(()))
-      }
-    }
-
-    describe("VarFragment") {
-      describe("with one param") {
-        val link = Root / "foo" / Param[String]("str") / "bar"
-
-        it("should not match shorter path") {
-          assert(link.capture("/foo") === None)
-        }
-
-        it("should not match longer path") {
-          assert(link.capture("/foo/str/bar/longer") === None)
-        }
-
-        it("should not match different path") {
-          assert(link.capture("/bar/str/foo") === None)
-        }
-
-        it("should not match if static in varfragment doesn't match") {
-          assert(link.capture("/foo/str") === None)
-        }
-
-        it("should match equal path") {
-          assert(link.capture("/foo/str/bar") === Some(Right("str")))
-        }
-      }
-
-      describe("with two params") {
-        val link: VarFragment[Int, String :: HNil] =
-          Root / "foo" / Param[String]("str") / Param[Int]("int") / "bar"
-
-        it("should not match shorter path") {
-          assert(link.capture("/foo") === None)
-        }
-
-        it("should not match if static in varfragment doesn't match") {
-          assert(link.capture("/foo/str/1/baz") === None)
-        }
-
-        it("should match equal path") {
-          assert(link.capture("/foo/str/1/bar") === Some((Right("str"), Right(1))))
         }
       }
     }

@@ -25,28 +25,7 @@ object HLinx {
     path.split("/").toVector.filter(_.nonEmpty)
 
   sealed trait LinkFragment[A <: HList] {
-    val didNotMatch: (Boolean, Vector[String]) = (false, Vector.empty[String])
-
     def staticFragments: Vector[String]
-
-    // TODO rename to definedAt
-    final def matches(s: String): Boolean = {
-      val (parentMatch, leftovers) = internalMatches(splitPath(s))
-      parentMatch && leftovers.isEmpty
-    }
-
-    def internalMatches(fs: Vector[String]): (Boolean, Vector[String])
-
-    def matchesStatic(fs: Vector[String]): (Boolean, Vector[String]) = {
-      val zipped: Vector[(String, String)] = fs zip staticFragments
-      if (zipped.size < staticFragments.size) (false, fs.drop(zipped.size))
-      else {
-        val isMatch = zipped.forall { case (a, b) => a == b }
-
-        if (isMatch) (true, fs.drop(zipped.size))
-        else didNotMatch
-      }
-    }
 
     def overlaps[B <: HList](that: LinkFragment[B]): Boolean = {
       val as: Vector[Segment] = toSegments
@@ -77,26 +56,18 @@ object HLinx {
     def /[A](p: Param[A]): VarFragment[A, HNil] =
       VarFragment(this, Vector.empty, p)
 
-    override def internalMatches(fs: Vector[String]): (Boolean, Vector[String]) =
-      matchesStatic(fs)
-
     override def toSegments: Vector[Segment] = staticFragments.map(Static)
   }
 
-  case class VarFragment[A, B <: HList](parent: LinkFragment[B], staticFragments: Vector[String], param: Param[A])
-      extends LinkFragment[A :: B] {
-    def /(s: String): VarFragment[A, B] =
+  case class VarFragment[CURRENT, PARENT <: HList](parent: LinkFragment[PARENT],
+                                                   staticFragments: Vector[String],
+                                                   param: Param[CURRENT])
+      extends LinkFragment[CURRENT :: PARENT] {
+    def /(s: String): VarFragment[CURRENT, PARENT] =
       this.copy(staticFragments = staticFragments ++ splitPath(s))
 
-    def /[C](p: Param[C]): VarFragment[C, A :: B] =
+    def /[NEXT](p: Param[NEXT]): VarFragment[NEXT, CURRENT :: PARENT] =
       VarFragment(this, Vector.empty, p)
-
-    override def internalMatches(fs: Vector[String]): (Boolean, Vector[String]) = {
-      val (parentMatches, leftovers) = parent.internalMatches(fs)
-
-      if (parentMatches && leftovers.nonEmpty) matchesStatic(leftovers.tail)
-      else didNotMatch
-    }
 
     override def toSegments: Vector[Segment] = {
       (parent.toSegments :+ Var) ++ staticFragments.map(Static)
@@ -140,7 +111,7 @@ object HLinx {
     }
   }
 
-  implicit class S2[A, B](private val lf: VarFragment[A, B :: HNil]) extends AnyVal {
+  implicit class S2[A, B](private val lf: LinkFragment[A :: B :: HNil]) extends AnyVal {
     def capture(path: String): Option[(Either[String, B], Either[String, A])] = {
       capture(splitPath(path)).flatMap {
         case (paramB, paramA, Vector()) => Some((paramB, paramA))
