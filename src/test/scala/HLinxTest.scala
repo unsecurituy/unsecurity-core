@@ -75,7 +75,7 @@ class HLinxTest extends FunSpec {
         }
 
         it("do not overlap /foo/bar/baz") {
-          assert(link.overlaps(Root / "foo" / "bar"))
+          assert(!link.overlaps(Root / "foo" / "baz"))
         }
 
         it("do not overlap /foo/bar/Param[String]") {
@@ -106,6 +106,71 @@ class HLinxTest extends FunSpec {
 
         it("do not overlap /foo/Param[String]/baz") {
           assert(!link.overlaps(Root / "foo" / Param[String]("") / "baz"))
+        }
+      }
+    }
+  }
+
+  describe("capture") {
+    describe("StaticFragment") {
+      val link: StaticFragment = Root / "foo"
+
+      it("should not match shorter path") {
+        assert(link.capture("/") === None)
+      }
+
+      it("should not match longer path") {
+        assert(link.capture("/foo/foo") === None)
+      }
+
+      it("should not match different path") {
+        assert(link.capture("/bar") === None)
+      }
+
+      it("should match equal path") {
+        assert(link.capture("/foo") === Some(()))
+      }
+    }
+
+    describe("VarFragment") {
+      describe("with one param") {
+        val link = Root / "foo" / Param[String]("str") / "bar"
+
+        it("should not match shorter path") {
+          assert(link.capture("/foo") === None)
+        }
+
+        it("should not match longer path") {
+          assert(link.capture("/foo/str/bar/longer") === None)
+        }
+
+        it("should not match different path") {
+          assert(link.capture("/bar/str/foo") === None)
+        }
+
+        it("should not match if static in varfragment doesn't match") {
+          assert(link.capture("/foo/str") === None)
+        }
+
+        it("should match equal path") {
+          assert(link.capture("/foo/str/bar") === Some(Right("str")))
+        }
+      }
+
+      describe("with two params") {
+        val link: VarFragment[Int, String :: HNil] =
+          Root / "foo" / Param[String]("str") / Param[Int]("int") / "bar"
+
+        it("should not match shorter path") {
+          assert(link.capture("/foo") === None)
+        }
+
+        it("should not match if static in varfragment doesn't match") {
+          assert(link.capture("/foo/str/1/baz") === None)
+        }
+
+        it("should match equal path") {
+          assert(link.capture("/foo/str/1/bar") === Some((Right("str"), Right(1))))
         }
       }
     }
