@@ -131,5 +131,7 @@ object HLinx {
                                   }
       } yield (paramB, paramA, thisLeftOvers)
     }
+
+    def happyCase: (A, B) = ???
   }
 }
