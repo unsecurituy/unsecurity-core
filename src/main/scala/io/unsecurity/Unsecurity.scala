@@ -4,9 +4,13 @@ import cats.effect.IO
 import io.unsecurity.hlinx.HLinx.{HList, LinkFragment, _}
 import no.scalabin.http4s.directives.Directive
 
-object Unsecurity {
-  def safe[F[_]]: Safe[F] = ???
+class Unsecurity[USERPROFILE <: UserProfile] {
+  def safe[F[_]]: Safe[F, USERPROFILE] = ???
   //def unsafe[F[_]]: Unsafe[F] = ???
+}
+
+object Unsecurity {
+  def apply[USERPROFILE <: UserProfile]: Unsecurity[USERPROFILE] = new Unsecurity()
 }
 
 /**
@@ -36,48 +40,38 @@ private class EmptyPredicateContext extends PredicateContext
 private object AlwaysAllow          extends SecurityPredicate[EmptyPredicateContext](_ => true)
 private object AlwaysDeny           extends SecurityPredicate[EmptyPredicateContext](_ => false)
 
-class CompleteRoute[F[_], ResponseType, PathParams <: HList](
-    path: LinkFragment[PathParams],
-    queryParams: Map[String, List[String]], //Eirik fikser et alternativ etterhvert
-    accepts: List[MediaType],
-    produces: List[MediaType],
-    authorization: Option[String],
-    method: String,
-    f: () => Directive[F, ResponseType]
+class CompleteRoute[F[_], USERPROFILE <: UserProfile, ResponseType, PathParams <: HList](
+//    path: LinkFragment[PathParams],
+//    queryParams: Map[String, List[String]], //Eirik fikser et alternativ etterhvert
+//    accepts: List[MediaType],
+//    produces: List[MediaType],
+//    authorization: Option[String],
+//    method: String,
+//    f: () => Directive[F, ResponseType]
 )
 
-class Safe[F[_]] {
-  def route[PathParams <: HList](path: LinkFragment[PathParams]): SafeRoute[F, PathParams] = new SafeRoute[F, PathParams](
-    path,
-    Map.empty,
-    List.empty,
-    List.empty,
-    AlwaysDeny
-  )
+class Safe[F[_], USERPROFILE <: UserProfile] {
+  def route[PathParams <: HList](path: LinkFragment[PathParams]): SafeRoute[F, USERPROFILE, PathParams] = new SafeRoute[F, USERPROFILE, PathParams]
 }
 
-class SafeRoute[F[_], PathParams <: HList](
-    path: LinkFragment[PathParams],
-    queryParams: Map[String, List[String]],
-    accepts: List[MediaType],
-    produces: List[MediaType],
-    authorization: SecurityPredicate[_]
-) extends Safe {
-  def queryParams(param: String): SafeRoute[F, PathParams]                                     = ???
-  def consumes[IN](mediaType: MediaType*): SafeRouteWithInAndOut[F, PathParams, IN, Nothing]   = ???
-  def produces[OUT](mediaType: MediaType*): SafeRouteWithInAndOut[F, PathParams, Nothing, OUT] = ???
+class SafeRoute[F[_], USERPROFILE <: UserProfile, PathParams <: HList]() {
+  def queryParams(param: String): SafeRoute[F, USERPROFILE, PathParams]                       = ???
+  def consumes[IN](mediaType: MediaType*): SafeRouteWithIn[F, USERPROFILE, PathParams, IN]    = ???
+  def produces[OUT](mediaType: MediaType*): SafeRouteWithOut[F, USERPROFILE, PathParams, OUT] = ???
 }
 
-class SafeRouteWithInAndOut[F[_], PathParams <: HList, IN, OUT](
-    path: LinkFragment[PathParams],
-    queryParams: Map[String, List[String]],
-    accepts: List[MediaType],
-    produces: List[MediaType],
-    authorization: SecurityPredicate[_]
-) extends SafeRoute[F, PathParams](path, queryParams, accepts, produces, authorization) {
-  def authorization[A <: PredicateContext](authRule: SecurityPredicate[A]): SafeRouteWithInAndOut[F, PathParams, IN, OUT]        = ???
-  def GET[USERPROFILE <: UserProfile](f: (USERPROFILE, PathParams) => Directive[F, OUT]): CompleteRoute[F, OUT, PathParams]      = ???
-  def POST[USERPROFILE <: UserProfile](f: (USERPROFILE, IN, PathParams) => Directive[F, OUT]): CompleteRoute[F, OUT, PathParams] = ???
+class SafeRouteWithIn[F[_], USERPROFILE <: UserProfile, PathParams <: HList, IN] {
+  def produces[OUT](mediaType: MediaType*): SafeRouteWithInAndOut[F, USERPROFILE, PathParams, IN, OUT] = ???
+}
+class SafeRouteWithOut[F[_], USERPROFILE <: UserProfile, PathParams <: HList, OUT] {
+  def consumes[IN](mediaType: MediaType*): SafeRouteWithInAndOut[F, USERPROFILE, PathParams, IN, OUT]                         = ???
+  def authorization[A <: PredicateContext](authRule: SecurityPredicate[A]): SafeRouteWithOut[F, USERPROFILE, PathParams, OUT] = ???
+  def GET(f: (USERPROFILE, PathParams) => Directive[F, OUT]): CompleteRoute[F, USERPROFILE, OUT, PathParams]                  = ???
+}
+
+class SafeRouteWithInAndOut[F[_], USERPROFILE <: UserProfile, PathParams <: HList, IN, OUT] {
+  def authorization[A <: PredicateContext](authRule: SecurityPredicate[A]): SafeRouteWithInAndOut[F, USERPROFILE, PathParams, IN, OUT] = ???
+  def POST(f: (USERPROFILE, IN, PathParams) => Directive[F, OUT]): CompleteRoute[F, USERPROFILE, OUT, PathParams]                      = ???
 }
 
 class SecurityPredicate[A <: PredicateContext](predicate: A => Boolean) {
@@ -101,13 +95,13 @@ object Test {
   case class MyRequest(in: String)
 
   val :: = HCons
-  val aRoute: CompleteRoute[IO, MyResponse, ::[String, ::[Int, HNil]]] =
-    Unsecurity
+  val aRoute: CompleteRoute[IO, MyProfile, MyResponse, ::[String, ::[Int, HNil]]] =
+    Unsecurity[MyProfile]
       .safe[IO]
-      .route(Root / "balle" / Param[Int]("knut") / Param[String]("ola"))
+      .route(Root / "aRequest" / Param[Int]("intParam") / Param[String]("stringParam"))
       .consumes[MyRequest](application.json) //application.json by magic somehow makes sure there is an encoder
       .produces[MyResponse](application.json) //application.json by magic somehow makes sure there is an encoder
-      .POST[MyProfile] {
+      .POST {
         case (user, myRequest, knut :: ola :: HNil) =>
           Directive.success(MyResponse(s"Hello ${user.name}, you requested ${myRequest.in}"))
       }
