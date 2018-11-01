@@ -63,21 +63,20 @@ class SafeRoute[F[_], PathParams <: HList](
     produces: List[MediaType],
     authorization: SecurityPredicate[_]
 ) extends Safe {
-  def queryParams(param: String): SafeRoute[F, PathParams]                                                                      = ???
-  def consumes[IN](mediaType: MediaType*): SafeRoutWithMethod[F, PathParams, IN, Nothing]                                       = ???
-  def produces[OUT](mediaType: MediaType*): SafeRoutWithMethod[F, PathParams, Nothing, OUT]                                     = ???
-  def authorization[A <: PredicateContext](authRule: SecurityPredicate[A]): SafeRoutWithMethod[F, PathParams, Nothing, Nothing] = ???
-
+  def queryParams(param: String): SafeRoute[F, PathParams]                                     = ???
+  def consumes[IN](mediaType: MediaType*): SafeRouteWithInAndOut[F, PathParams, IN, Nothing]   = ???
+  def produces[OUT](mediaType: MediaType*): SafeRouteWithInAndOut[F, PathParams, Nothing, OUT] = ???
 }
 
-class SafeRoutWithMethod[F[_], PathParams <: HList, IN, OUT](
+class SafeRouteWithInAndOut[F[_], PathParams <: HList, IN, OUT](
     path: LinkFragment[PathParams],
     queryParams: Map[String, List[String]],
     accepts: List[MediaType],
     produces: List[MediaType],
     authorization: SecurityPredicate[_]
 ) extends SafeRoute[F, PathParams](path, queryParams, accepts, produces, authorization) {
-  def GET[USERPROFILE <: UserProfile](f: (USERPROFILE, PathParams) => Directive[F, OUT]): CompleteRoute[F, OUT, PathParams]  = ???
+  def authorization[A <: PredicateContext](authRule: SecurityPredicate[A]): SafeRouteWithInAndOut[F, PathParams, IN, OUT]        = ???
+  def GET[USERPROFILE <: UserProfile](f: (USERPROFILE, PathParams) => Directive[F, OUT]): CompleteRoute[F, OUT, PathParams]      = ???
   def POST[USERPROFILE <: UserProfile](f: (USERPROFILE, IN, PathParams) => Directive[F, OUT]): CompleteRoute[F, OUT, PathParams] = ???
 }
 
