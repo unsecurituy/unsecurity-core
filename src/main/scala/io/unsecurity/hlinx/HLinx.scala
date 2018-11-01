@@ -1,7 +1,11 @@
 package io.unsecurity.hlinx
 
 object HLinx {
+  implicit class HlistTupleOps2[A, B](hlist: A :: B :: HNil) {
+    def tupled: (A, B) = (hlist.head, hlist.tail.head)
+  }
 
+  val :: = HCons
   sealed trait HList
   final class HNil extends HList {
     def ::[T](v: T): HCons[T, HNil] = HCons(v, this)
@@ -59,9 +63,7 @@ object HLinx {
     override def toSegments: Vector[Segment] = staticFragments.map(Static)
   }
 
-  case class VarFragment[CURRENT, PARENT <: HList](parent: LinkFragment[PARENT],
-                                                   staticFragments: Vector[String],
-                                                   param: Param[CURRENT])
+  case class VarFragment[CURRENT, PARENT <: HList](parent: LinkFragment[PARENT], staticFragments: Vector[String], param: Param[CURRENT])
       extends LinkFragment[CURRENT :: PARENT] {
     def /(s: String): VarFragment[CURRENT, PARENT] =
       this.copy(staticFragments = staticFragments ++ splitPath(s))

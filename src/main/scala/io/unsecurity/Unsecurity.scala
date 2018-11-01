@@ -10,6 +10,8 @@ class Unsecurity[USER <: AuthenticatedUser[_,_]] {
 }
 
 object Unsecurity {
+
+
   def apply[USER <: AuthenticatedUser[_, _]]: Unsecurity[USER] = new Unsecurity()
 }
 
@@ -94,17 +96,31 @@ object Test {
   case class MyResponse(result: String)
   case class MyRequest(in: String)
 
-  val :: = HCons
-  val aRoute: CompleteRoute[IO, MyAuthenticatedUser, MyResponse, ::[String, ::[Int, HNil]]] =
-    Unsecurity[MyAuthenticatedUser]
+  val unsecurity = Unsecurity[MyAuthenticatedUser]
+
+  val aRoute =
+    unsecurity
       .safe[IO]
       .route(Root / "aRequest" / Param[Int]("intParam") / Param[String]("stringParam"))
       .consumes[MyRequest](application.json) //application.json by magic somehow makes sure there is an encoder
       .produces[MyResponse](application.json) //application.json by magic somehow makes sure there is an encoder
       .POST {
-        case (user, myRequest, knut :: ola :: HNil) =>
+        case (user, myRequest, intParam :: stringParam :: HNil) =>
           Directive.success(MyResponse(s"Hello ${user.profile.name}, you requested ${myRequest.in}"))
       }
+
+
+
+  val otherRoute =
+    unsecurity
+      .safe[IO]
+      .route(Root / "aRequest" / Param[Int]("intParam") / Param[String]("stringParam"))
+      .consumes[MyRequest](application.json) //application.json by magic somehow makes sure there is an encoder
+      .produces[MyResponse](application.json) //application.json by magic somehow makes sure there is an encoder
+      .POST { (user, myRequest, pathParams) =>
+        val (intParam, stringParam) = pathParams.tupled
+        Directive.success(MyResponse(s"Hello ${user.profile.name}, you requested ${myRequest.in}"))
+    }
 }
 
 /*
