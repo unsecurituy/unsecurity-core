@@ -1,139 +1,109 @@
 package io.unsecurity.hlinx
 
 object HLinx {
-  implicit class HlistTupleOps2[A, B](hlist: A :: B :: HNil) {
-    def tupled: (A, B) = (hlist.head, hlist.tail.head)
-  }
-
-  val :: = HCons
   sealed trait HList
+  case class HCons[H, T <: HList](head: H, tail: T) extends HList {
+    def :::[V](v: V): HCons[V, H ::: T] = HCons(v, this)
+  }
   final class HNil extends HList {
-    def ::[T](v: T): HCons[T, HNil] = HCons(v, this)
+    def :::[T](v: T): HCons[T, HNil] = HCons(v, this)
   }
   val HNil: HNil = new HNil
-  case class HCons[H, T <: HList](head: H, tail: T) extends HList {
-    def ::[V](v: V): HCons[V, H :: T] = HCons(v, this)
+  type :::[H, T <: HList] = HCons[H, T]
+  val ::: = HCons
+
+  def param[A](name: String)(implicit ppc: PathParamConverter[A])   = Param(name, ppc)
+  def qParam[A](name: String)(implicit qpc: QueryParamConverter[A]) = QueryParam[A](name, qpc)
+
+  implicit class QpOps[A](qp: QueryParam[A]) {
+    def &[B](other: QueryParam[B]): QueryParam[B] ::: QueryParam[A] ::: HNil =
+      other ::: qp ::: HNil
   }
-  type ::[H, T <: HList] = HCons[H, T]
 
-  case class Param[A: ParamConverter](name: String) {
-    def convert(s: String): Either[String, A] =
-      implicitly[ParamConverter[A]].convert(s)
+  implicit class HListOfQpOps[A <: HList](qp: A) {
+    def &[B](other: QueryParam[B]) =
+      HCons(other, qp)
   }
 
-  sealed trait Segment
-  case class Static(name: String) extends Segment
-  case object Var                 extends Segment
+  def splitPath(path: String): List[String] = path.split("/").toList.filter(_.nonEmpty)
 
-  def splitPath(path: String): Vector[String] =
-    path.split("/").toVector.filter(_.nonEmpty)
-
-  sealed trait LinkFragment[A <: HList] {
-    def staticFragments: Vector[String]
-
-    def overlaps[B <: HList](that: LinkFragment[B]): Boolean = {
-      val as: Vector[Segment] = toSegments
-      val bs: Vector[Segment] = that.toSegments
-
-      if (as.size != bs.size) false
-      else {
-        (as zip bs).foldLeft(true) {
-          case (acc, t) =>
-            acc && (t match {
-              case (Var, _)               => true
-              case (_, Var)               => true
-              case (Static(a), Static(b)) => a == b
-            })
+  sealed trait HLinx[T <: HList] {
+    def /(element: String): Static[T] = {
+      splitPath(element).tail
+        .foldLeft(Static(this, splitPath(element).head)) { (acc, e) =>
+          Static(acc, e)
         }
+    }
+    def /[H](h: Param[H])                             = Variable(this, h.converter, h.name)
+    def capture(s: String): Option[Either[String, T]] = extract(splitPath(s).reverse)
+    def extract(s: List[String]): Option[Either[String, T]]
+    def overlaps[O <: HList](other: HLinx[O]): Boolean
+  }
+
+  case object Root extends HLinx[HNil] {
+    override def extract(s: List[String]): Option[Either[String, HNil]] =
+      if (s.isEmpty) Some(Right(HNil)) else None
+
+    override def overlaps[O <: HList](other: HLinx[O]): Boolean =
+      other match {
+        case Root => true
+        case _    => false
+      }
+  }
+
+  case class Static[A <: HList](parent: HLinx[A], element: String) extends HLinx[A] {
+    override def extract(s: List[String]): Option[Either[String, A]] = s match {
+      case `element` :: rest => parent.extract(rest)
+      case _                 => None
+    }
+    override def overlaps[O <: HList](other: HLinx[O]): Boolean =
+      other match {
+        case Root                              => false
+        case Static(otherParent, otherElement) => element == otherElement && parent.overlaps(otherParent)
+        case Variable(otherParent, _, _)       => parent.overlaps(otherParent)
+      }
+  }
+  case class Variable[H, T <: HList](parent: HLinx[T], P: PathParamConverter[H], element: String) extends HLinx[H ::: T] {
+    override def extract(s: List[String]): Option[Either[String, H ::: T]] = s match {
+      case h :: rest =>
+        parent
+          .extract(rest)
+          .map(t =>
+            for {
+              hlist          <- t
+              convertedParam <- P.convert(h)
+            } yield {
+              HCons(convertedParam, hlist)
+          })
+      case _ => None
+    }
+
+    def overlaps[A <: HList](hlinx: HLinx[A]): Boolean = {
+      hlinx match {
+        case Root                        => false
+        case Static(otherParent, _)      => parent.overlaps(otherParent)
+        case Variable(otherParent, _, _) => parent.overlaps(otherParent)
       }
     }
-
-    def toSegments: Vector[Segment]
   }
 
-  val Root = StaticFragment(Vector.empty)
-
-  case class StaticFragment(staticFragments: Vector[String]) extends LinkFragment[HNil] {
-    def /(s: String): StaticFragment =
-      StaticFragment(staticFragments ++ splitPath(s))
-
-    def /[A](p: Param[A]): VarFragment[A, HNil] =
-      VarFragment(this, Vector.empty, p)
-
-    override def toSegments: Vector[Segment] = staticFragments.map(Static)
+  implicit class S0(private val hlist: HNil) extends AnyVal {
+    def tupled(): Unit = ()
   }
 
-  case class VarFragment[CURRENT, PARENT <: HList](parent: LinkFragment[PARENT], staticFragments: Vector[String], param: Param[CURRENT])
-      extends LinkFragment[CURRENT :: PARENT] {
-    def /(s: String): VarFragment[CURRENT, PARENT] =
-      this.copy(staticFragments = staticFragments ++ splitPath(s))
-
-    def /[NEXT](p: Param[NEXT]): VarFragment[NEXT, CURRENT :: PARENT] =
-      VarFragment(this, Vector.empty, p)
-
-    override def toSegments: Vector[Segment] = {
-      (parent.toSegments :+ Var) ++ staticFragments.map(Static)
-    }
+  implicit class S1[A](private val hlist: A ::: HNil) extends AnyVal {
+    def tupled: A = hlist.head
   }
 
-  implicit class S0(private val lf: LinkFragment[HNil]) extends AnyVal {
-    def capture(path: String): Option[Unit] = {
-      capture(splitPath(path)).flatMap {
-        case Vector() => Some(())
-        case _        => None
-      }
-    }
-
-    def capture(pathFragments: Vector[String]): Option[Vector[String]] = {
-      if (pathFragments.startsWith(lf.staticFragments))
-        Some(pathFragments.drop(lf.staticFragments.size))
-      else None
-    }
+  implicit class S2[A, B](private val hlist: B ::: A ::: HNil) extends AnyVal {
+    def tupled: (A, B) = (hlist.tail.head, hlist.head)
   }
 
-  implicit class S1[A](private val lf: LinkFragment[A :: HNil]) extends AnyVal {
-    def capture(path: String): Option[Either[String, A]] = {
-      capture(splitPath(path)).flatMap {
-        case (paramA, Vector()) => Some(paramA)
-        case _                  => None
-      }
-    }
-
-    def capture(pathFragments: Vector[String]): Option[(Either[String, A], Vector[String])] = {
-      val vf: VarFragment[A, HNil] = lf.asInstanceOf[VarFragment[A, HNil]]
-
-      for {
-        parentLeftovers <- vf.parent.capture(pathFragments)
-        thisResult <- parentLeftovers match {
-                       case head +: tail if tail.startsWith(vf.staticFragments) =>
-                         Some((vf.param.convert(head), tail.drop(vf.staticFragments.size)))
-                       case _ => None
-                     }
-      } yield thisResult
-    }
+  implicit class S3[A, B, C](private val hlist: C ::: B ::: A ::: HNil) extends AnyVal {
+    def tupled: (A, B, C) = (hlist.tail.tail.head, hlist.tail.head, hlist.head)
   }
 
-  implicit class S2[A, B](private val lf: LinkFragment[A :: B :: HNil]) extends AnyVal {
-    def capture(path: String): Option[(Either[String, B], Either[String, A])] = {
-      capture(splitPath(path)).flatMap {
-        case (paramB, paramA, Vector()) => Some((paramB, paramA))
-        case _                          => None
-      }
-    }
-
-    def capture(pathFragments: Vector[String]): Option[(Either[String, B], Either[String, A], Vector[String])] = {
-      val vf = lf.asInstanceOf[VarFragment[A, B :: HNil]]
-
-      for {
-        (paramB, parentLeftovers) <- vf.parent.capture(pathFragments)
-        (paramA, thisLeftOvers) <- parentLeftovers match {
-                                    case head +: tail if tail.startsWith(vf.staticFragments) =>
-                                      Some((vf.param.convert(head), tail.drop(vf.staticFragments.size)))
-                                    case _ => None
-                                  }
-      } yield (paramB, paramA, thisLeftOvers)
-    }
-
-    def happyCase: (A, B) = ???
+  implicit class S4[A, B, C, D](private val hlist: D ::: C ::: B ::: A ::: HNil) extends AnyVal {
+    def tupled: (A, B, C, D) = (hlist.tail.tail.tail.head, hlist.tail.tail.head, hlist.tail.head, hlist.head)
   }
 }
