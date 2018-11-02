@@ -1,7 +1,8 @@
 package io.unsecurity
 
 import cats.effect.IO
-import io.unsecurity.hlinx.HLinx.{HList, LinkFragment, _}
+import io.unsecurity.hlinx.HLinx._
+import io.unsecurity.hlinx.QueryParam
 import no.scalabin.http4s.directives.Directive
 
 class Unsecurity[USER <: AuthenticatedUser[_, _]] {
@@ -49,11 +50,12 @@ class CompleteRoute[F[_], USER <: AuthenticatedUser[_, _], ResponseType, PathPar
 )
 
 class Safe[F[_], USER <: AuthenticatedUser[_, _]] {
-  def route[PathParams <: HList](path: LinkFragment[PathParams]): SafeRoute[F, USER, PathParams] = new SafeRoute[F, USER, PathParams]
+  def route[PathParams <: HList](path: HLinx[PathParams]): SafeRoute[F, USER, PathParams] = new SafeRoute[F, USER, PathParams]
 }
 
 class SafeRoute[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList]() {
-  def queryParams(param: String): SafeRoute[F, USER, PathParams]                       = ???
+  def queryParams[A](param: QueryParam[A]): SafeRoute[F, USER, PathParams]             = queryParams(param ::: HNil)
+  def queryParams[A <: HList](params: A): SafeRoute[F, USER, PathParams]               = ???
   def consumes[IN](mediaType: MediaType*): SafeRouteWithIn[F, USER, PathParams, IN]    = ???
   def produces[OUT](mediaType: MediaType*): SafeRouteWithOut[F, USER, PathParams, OUT] = ???
 }
@@ -103,19 +105,20 @@ object Test {
   val aRoute =
     unsecurity
       .safe[IO]
-      .route(Root / "aRequest" / Param[Int]("intParam") / Param[String]("stringParam"))
+      .route(Root / "aRequest" / param[Int]("intParam") / param[String]("stringParam"))
       .consumes[MyRequest](application.json) //application.json by magic somehow makes sure there is an decoder
       .produces[MyResponse](application.json) //application.json by magic somehow makes sure there is an encoder
       .authorization(HasRole("admin") || HasAccessToFeature("myFeature"))
       .POST {
-        case (user, myRequest, intParam :: stringParam :: HNil) =>
+        case (user, myRequest, intParam ::: stringParam ::: HNil) =>
           Directive.success(MyResponse(s"Hello ${user.profile.name}, you requested ${myRequest.in}"))
       }
 
   val otherRoute =
     unsecurity
       .safe[IO]
-      .route(Root / "aRequest" / Param[Int]("intParam") / Param[String]("stringParam"))
+      .route(Root / "aRequest" / param[Int]("intParam") / param[String]("stringParam"))
+      .queryParams(qParam[Int]("offset"))
       .consumes[MyRequest](application.json)
       .produces[MyResponse](application.json)
       .authorization(HasRole("admin") || HasAccessToFeature("myFeature"))
@@ -128,6 +131,7 @@ object Test {
     unsecurity
       .safe[IO]
       .route(Root / "aRequest")
+      .queryParams(qParam[Int]("offset") & qParam[String]("bar"))
       .consumes[MyRequest](application.json)
       .produces[MyResponse](application.json)
       .authorization(HasRole("admin") || HasAccessToFeature("myFeature"))

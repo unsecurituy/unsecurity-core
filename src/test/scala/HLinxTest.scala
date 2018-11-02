@@ -6,7 +6,7 @@ class HLinxTest extends FunSpec {
   describe("capture") {
     describe("StaticFragment") {
       describe("Root / foo / bar") {
-        val link: StaticFragment = Root / "foo" / "bar"
+        val link = Root / "foo" / "bar"
 
         it("should match equal path") {
           assert(link.capture("/foo/bar").isDefined)
@@ -17,7 +17,7 @@ class HLinxTest extends FunSpec {
         }
 
         it("should not match different path") {
-          assert(link.capture("foo/baz") === None)
+          assert(link.capture("/foo/baz") === None)
         }
 
         it("should not match longer path") {
@@ -28,7 +28,7 @@ class HLinxTest extends FunSpec {
 
     describe("VarFragment") {
       describe("with one param") {
-        val link = Root / "foo" / Param[String]("str") / "bar"
+        val link = Root / "foo" / param[String]("str") / "bar"
 
         it("should not match shorter path") {
           assert(link.capture("/foo") === None)
@@ -47,13 +47,13 @@ class HLinxTest extends FunSpec {
         }
 
         it("should match equal path") {
-          assert(link.capture("/foo/str/bar") === Some(Right("str")))
+          assert(link.capture("/foo/str/bar") === Some(Right("str" ::: HNil)))
         }
       }
 
       describe("with two params") {
-        val link: LinkFragment[Int :: String :: HNil] =
-          Root / "foo" / Param[String]("str") / Param[Int]("int") / "bar"
+        val link =
+          Root / "foo" / param[String]("str") / param[Int]("int") / "bar"
 
         it("should not match shorter path") {
           assert(link.capture("/foo") === None)
@@ -64,7 +64,7 @@ class HLinxTest extends FunSpec {
         }
 
         it("should match equal path") {
-          assert(link.capture("/foo/str/1/bar") === Some((Right("str"), Right(1))))
+          assert(link.capture("/foo/str/1/bar") === Some(Right(1 ::: "str" ::: HNil)))
         }
       }
     }
@@ -73,7 +73,7 @@ class HLinxTest extends FunSpec {
   describe("overlaps") {
     describe("StaticFragment") {
       describe("Root / foo / bar") {
-        val link: StaticFragment = Root / "foo" / "bar"
+        val link: HLinx[HNil] = Root / "foo" / "bar"
 
         it("overlap /foo/bar") {
           assert(link.overlaps(Root / "foo" / "bar"))
@@ -83,34 +83,34 @@ class HLinxTest extends FunSpec {
           assert(!link.overlaps(Root / "foo" / "baz"))
         }
 
-        it("do not overlap /foo/bar/Param[String]") {
-          assert(!link.overlaps(Root / "foo" / "bar" / Param[String]("")))
+        it("do not overlap /foo/bar/param[String]") {
+          assert(!link.overlaps(Root / "foo" / "bar" / param[String]("")))
         }
 
-        it("overlap /foo/Param[String)(bar)") {
-          assert(link.overlaps(Root / "foo" / Param[String]("bar")))
+        it("overlap /foo/param[String)(bar)") {
+          assert(link.overlaps(Root / "foo" / param[String]("bar")))
         }
 
-        it("do not overlap /foo/Param[String)(bar)/baz") {
-          assert(!link.overlaps(Root / "foo" / Param[String]("bar") / "baz"))
+        it("do not overlap /foo/param[String)(bar)/baz") {
+          assert(!link.overlaps(Root / "foo" / param[String]("bar") / "baz"))
         }
       }
     }
 
     describe("VarFragment") {
-      describe("Root / Param[String] / bar") {
-        val link: VarFragment[String, HNil] = Root / Param[String]("") / "bar"
+      describe("Root / param[String] / bar") {
+        val link: HLinx[String ::: HNil] = Root / param[String]("") / "bar"
 
         it("overlap /foo/bar") {
           assert(link.overlaps(Root / "foo" / "bar"))
         }
 
-        it("overlap /foo/Param[String]") {
-          assert(link.overlaps(Root / "foo" / Param[String]("")))
+        it("overlap /foo/param[String]") {
+          assert(link.overlaps(Root / "foo" / param[String]("")))
         }
 
-        it("do not overlap /foo/Param[String]/baz") {
-          assert(!link.overlaps(Root / "foo" / Param[String]("") / "baz"))
+        it("do not overlap /foo/param[String]/baz") {
+          assert(!link.overlaps(Root / "foo" / param[String]("") / "baz"))
         }
       }
     }
