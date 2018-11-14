@@ -5,23 +5,24 @@ import io.unsecurity.hlinx.HLinx._
 import io.unsecurity.hlinx.QueryParam
 import no.scalabin.http4s.directives.Directive
 
-class Unsecurity[USER <: AuthenticatedUser[_, _]] {
-  def safe[F[_]]: Safe[F, USER] = ???
+class Unsecurity[F[_], USER <: AuthenticatedUser[_, _]] {
+  def safe: Safe[F, USER] = new Safe[F, USER]()
   //def unsafe[F[_]]: Unsafe[F] = ???
 }
 
 object Unsecurity {
 
-  def apply[USER <: AuthenticatedUser[_, _]]: Unsecurity[USER] = new Unsecurity()
+  def apply[F[_], USER <: AuthenticatedUser[_, _]]: Unsecurity[F, USER] = new Unsecurity()
 }
 
 /**
   * Represents the Authenticated user
+  *
   * @tparam A The identity type
   */
-trait AuthenticatedUser[A, B] {
-  def id: A
-  def profile: B
+trait AuthenticatedUser[ID, PROFILE] {
+  def id: ID
+  def profile: PROFILE
 }
 
 trait MediaType
@@ -29,24 +30,19 @@ object application {
   object json extends MediaType
 }
 
-trait PredicateContext
-
 object PathParams {
   def unapply[B <: HList](arg: B): Option[B] = None
 }
 
-private class EmptyPredicateContext extends PredicateContext
-private object AlwaysAllow          extends SecurityPredicate[EmptyPredicateContext](_ => true)
-private object AlwaysDeny           extends SecurityPredicate[EmptyPredicateContext](_ => false)
+private class AlwaysAllow extends SecurityPredicate[AuthenticatedUser[_, _]](_ => true)
+private class AlwaysDeny  extends SecurityPredicate[AuthenticatedUser[_, _]](_ => false)
 
 class CompleteRoute[F[_], USER <: AuthenticatedUser[_, _], ResponseType, PathParams <: HList](
-//    path: LinkFragment[PathParams],
-//    queryParams: Map[String, List[String]], //Eirik fikser et alternativ etterhvert
-//    accepts: List[MediaType],
-//    produces: List[MediaType],
-//    authorization: Option[String],
-//    method: String,
-//    f: () => Directive[F, ResponseType]
+    route: HList,
+    queryParams: HList,
+    consumes: List[MediaType],
+    produces: List[MediaType],
+    authorization: SecurityPredicate[USER]
 )
 
 class Safe[F[_], USER <: AuthenticatedUser[_, _]] {
@@ -64,24 +60,24 @@ class SafeRouteWithIn[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList
   def produces[OUT](mediaType: MediaType*): SafeRouteWithInAndOut[F, USER, PathParams, IN, OUT] = ???
 }
 class SafeRouteWithOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, OUT] {
-  def consumes[IN](mediaType: MediaType*): SafeRouteWithInAndOut[F, USER, PathParams, IN, OUT]                         = ???
-  def authorization[A <: PredicateContext](authRule: SecurityPredicate[A]): SafeRouteWithOut[F, USER, PathParams, OUT] = ???
-  def GET(f: (USER, PathParams) => Directive[F, OUT]): CompleteRoute[F, USER, OUT, PathParams]                         = ???
+  def consumes[IN](mediaType: MediaType*): SafeRouteWithInAndOut[F, USER, PathParams, IN, OUT]     = ???
+  def authorization(authRule: SecurityPredicate[USER]): SafeRouteWithOut[F, USER, PathParams, OUT] = ???
+  def GET(f: (USER, PathParams) => Directive[F, OUT]): CompleteRoute[F, USER, OUT, PathParams]     = ???
 }
 
 class SafeRouteWithInAndOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, IN, OUT] {
-  def authorization[A <: PredicateContext](authRule: SecurityPredicate[A]): SafeRouteWithInAndOut[F, USER, PathParams, IN, OUT] = ???
-  def POST(f: (USER, IN, PathParams) => Directive[F, OUT]): CompleteRoute[F, USER, OUT, PathParams]                             = ???
+  def authorization[A <: AuthenticatedUser[_, _]](authRule: (IN, PathParams) => SecurityPredicate[A]): SafeRouteWithInAndOut[F, USER, PathParams, IN, OUT] = ???
+  def POST(f: (USER, IN, PathParams) => Directive[F, OUT]): CompleteRoute[F, USER, OUT, PathParams]                                                        = ???
 }
 
-class SecurityPredicate[A <: PredicateContext](predicate: A => Boolean) {
-  def ||[B <: A](other: SecurityPredicate[B]) = new SecurityPredicate[B](a => predicate(a) || other(a))
+class SecurityPredicate[USER <: AuthenticatedUser[_, _]](predicate: USER => Boolean) {
+  def ||[B <: USER](other: SecurityPredicate[B]) = new SecurityPredicate[B](a => predicate(a) || other(a))
 
-  def &&[B <: A](other: SecurityPredicate[B]) = new SecurityPredicate[B](a => predicate(a) && other(a))
+  def &&[B <: USER](other: SecurityPredicate[B]) = new SecurityPredicate[B](a => predicate(a) && other(a))
 
-  def unary_!(): SecurityPredicate[A] = new SecurityPredicate[A](a => !predicate(a))
+  def unary_!(): SecurityPredicate[USER] = new SecurityPredicate[USER](a => !predicate(a))
 
-  def apply(a: A) = predicate(a)
+  def apply(a: USER) = predicate(a)
 }
 
 object Test {
@@ -92,49 +88,45 @@ object Test {
     override def profile: MyProfile = MyProfile("Kaare Nilsen", Set("admin"), Set("myFeature"))
   }
 
-  case class UserProfilePredicateContext(profile: MyProfile) extends PredicateContext
-  case class HasRole(role: String)                           extends SecurityPredicate[UserProfilePredicateContext](userProfile => userProfile.profile.roles.contains(role))
-  case class HasAccessToFeature(feature: String)
-      extends SecurityPredicate[UserProfilePredicateContext](userProfile => userProfile.profile.roles.contains(feature))
+  case class HasRole(role: String)                               extends SecurityPredicate[MyAuthenticatedUser](userProfile => userProfile.profile.roles.contains(role))
+  case class HasAccessToFeature(feature: String)                 extends SecurityPredicate[MyAuthenticatedUser](userProfile => userProfile.profile.roles.contains(feature))
+  case class BodyContains(content: String, myRequest: MyRequest) extends SecurityPredicate[MyAuthenticatedUser](userProfile => myRequest.in.contains(content))
 
   case class MyResponse(result: String)
   case class MyRequest(in: String)
 
-  val unsecurity = Unsecurity[MyAuthenticatedUser]
+  val unsecurity = Unsecurity[IO, MyAuthenticatedUser]
 
   val aRoute =
-    unsecurity
-      .safe[IO]
+    unsecurity.safe
       .route(Root / "aRequest" / param[Int]("intParam") / param[String]("stringParam"))
       .consumes[MyRequest](application.json) //application.json by magic somehow makes sure there is an decoder
       .produces[MyResponse](application.json) //application.json by magic somehow makes sure there is an encoder
-      .authorization(HasRole("admin") || HasAccessToFeature("myFeature"))
+      .authorization((myRequest, pathParams) => HasRole("admin") || HasAccessToFeature("myFeature") && BodyContains("kaare", myRequest))
       .POST {
         case (user, myRequest, intParam ::: stringParam ::: HNil) =>
           Directive.success(MyResponse(s"Hello ${user.profile.name}, you requested ${myRequest.in}"))
       }
 
   val otherRoute =
-    unsecurity
-      .safe[IO]
+    unsecurity.safe
       .route(Root / "aRequest" / param[Int]("intParam") / param[String]("stringParam"))
       .queryParams(qParam[Int]("offset"))
       .consumes[MyRequest](application.json)
       .produces[MyResponse](application.json)
-      .authorization(HasRole("admin") || HasAccessToFeature("myFeature"))
+      .authorization((myRequest, pathParams) => HasRole("admin") || HasAccessToFeature("myFeature"))
       .POST { (user, myRequest, pathParams) =>
         val (intParam, stringParam) = pathParams.tupled
         Directive.success(MyResponse(s"Hello ${user.profile.name}, you requested ${myRequest.in}"))
       }
 
   val thirdRoute =
-    unsecurity
-      .safe[IO]
+    unsecurity.safe
       .route(Root / "aRequest")
       .queryParams(qParam[Int]("offset") & qParam[String]("bar"))
       .consumes[MyRequest](application.json)
       .produces[MyResponse](application.json)
-      .authorization(HasRole("admin") || HasAccessToFeature("myFeature"))
+      .authorization((myRequest, pathParams) => HasRole("admin") || HasAccessToFeature("myFeature"))
       .POST { (user, myRequest, _) =>
         Directive.success(MyResponse(s"Hello ${user.profile.name}, you requested ${myRequest.in}"))
       }
