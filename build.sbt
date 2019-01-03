@@ -11,8 +11,8 @@ scalaVersion := "2.12.7"
 scalacOptions := Seq("-deprecation", "-Ypartial-unification", "-language:higherKinds", "-Ywarn-value-discard")
 
 val circeVersion      = "0.10.1"
-val http4sVersion     = "0.20.0-M1"
-val directivesVersion = "0.5.1"
+val http4sVersion     = "0.20.0-M4"
+val directivesVersion = "0.20.0-M4-1"
 
 libraryDependencies := Seq(
   "io.circe"           %% "circe-parser"        % circeVersion,
