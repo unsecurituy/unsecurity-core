@@ -29,8 +29,8 @@ object PathParams {
   def unapply[B <: HList](arg: B): Option[B] = None
 }
 
-private class AlwaysAllow[USER <: AuthenticatedUser[_, _]] extends SecurityPredicate[USER](_ => Some(HNil))
-private class AlwaysDeny[USER <: AuthenticatedUser[_, _]]  extends SecurityPredicate[USER](_ => None)
+private class AlwaysAllow[USER <: AuthenticatedUser[_, _]] extends SecurityPredicate[USER](_ => true)
+private class AlwaysDeny[USER <: AuthenticatedUser[_, _]]  extends SecurityPredicate[USER](_ => false)
 
 class CompleteRoute[F[_], USER <: AuthenticatedUser[_, _], ResponseType, PathParams <: HList](
     route: HLinx[PathParams],
@@ -91,24 +91,14 @@ class CompletableSafeRouteWithInAndOut[F[_], USER <: AuthenticatedUser[_, _], Pa
     new CompleteRoute[F, USER, OUT, PathParams](data.route, Method.POST, data.queryParams, data.consumes, data.produces, data.authorization)
 }
 
-class SecurityPredicate[USER <: AuthenticatedUser[_, _]](predicate: USER => Option[HList]) {
-  def ||[B <: USER](other: SecurityPredicate[B]) =
-    new SecurityPredicate[B](a =>
-      (predicate(a), other(a)) match {
-        case (Some(aCtx), Some(bCtx)) => Some(aCtx) //TODO: Append bCtx
-        case (Some(aCtx), None)       => Some(aCtx)
-        case (None, Some(bCtx))       => Some(bCtx)
-        case (None, None)             => None
-    })
+class SecurityPredicate[USER <: AuthenticatedUser[_, _]](predicate: USER => Boolean) {
+  def ||[B <: USER](other: SecurityPredicate[B]) = new SecurityPredicate[B](a => predicate(a) || other(a))
 
-  def &&[B <: USER](other: SecurityPredicate[B]) =
-    new SecurityPredicate[B](a =>
-      (predicate(a), other(a)) match {
-        case (Some(aCtx), Some(bCtx)) => Some(aCtx) //TODO: Append bCtx
-        case _                        => None
-    })
+  def &&[B <: USER](other: SecurityPredicate[B]) = new SecurityPredicate[B](a => predicate(a) && other(a))
 
-  def apply(a: USER): Option[HList] = predicate(a)
+  def unary_!(): SecurityPredicate[USER] = new SecurityPredicate[USER](a => !predicate(a))
+
+  def apply(a: USER) = predicate(a)
 }
 
 object Test {
@@ -119,9 +109,9 @@ object Test {
     override def profile: MyProfile = MyProfile("Kaare Nilsen", Set("admin"), Set("myFeature"))
   }
 
-  case class HasRole(role: String)                               extends SecurityPredicate[MyAuthenticatedUser](userProfile => if (userProfile.profile.roles.contains(role)) Some(HNil) else None)
-  case class HasAccessToFeature(feature: String)                 extends SecurityPredicate[MyAuthenticatedUser](userProfile => if (userProfile.profile.roles.contains(feature)) Some(HNil) else None)
-  case class BodyContains(content: String, myRequest: MyRequest) extends SecurityPredicate[MyAuthenticatedUser](userProfile => if (myRequest.in.contains(content)) Some(HNil) else None)
+  case class HasRole(role: String)                               extends SecurityPredicate[MyAuthenticatedUser](userProfile => userProfile.profile.roles.contains(role))
+  case class HasAccessToFeature(feature: String)                 extends SecurityPredicate[MyAuthenticatedUser](userProfile => userProfile.profile.roles.contains(feature))
+  case class BodyContains(content: String, myRequest: MyRequest) extends SecurityPredicate[MyAuthenticatedUser](userProfile => myRequest.in.contains(content))
 
   case class MyResponse(result: String)
   case class MyRequest(in: String)
