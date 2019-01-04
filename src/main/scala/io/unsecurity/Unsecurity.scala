@@ -32,63 +32,63 @@ object PathParams {
 private class AlwaysAllow[USER <: AuthenticatedUser[_, _]] extends SecurityPredicate[USER](_ => true)
 private class AlwaysDeny[USER <: AuthenticatedUser[_, _]]  extends SecurityPredicate[USER](_ => false)
 
-class CompleteRoute[F[_], USER <: AuthenticatedUser[_, _], ResponseType, PathParams <: HList](
+class CompleteRoute[F[_], USER <: AuthenticatedUser[_, _], IN, ResponseType, PathParams <: HList](
     route: HLinx[PathParams],
     method: Method,
     queryParams: HList,
     consumes: List[MediaType],
     produces: List[MediaType],
-    authorization: SecurityPredicate[USER]
+    authorization: (IN, PathParams) => SecurityPredicate[USER]
 )
 
-private case class RouteBuilderData[PathParams <: HList, USER <: AuthenticatedUser[_, _]](
+private case class RouteBuilderData[IN, PathParams <: HList, USER <: AuthenticatedUser[_, _]](
     route: HLinx[PathParams],
     queryParams: HList = HNil,
     consumes: List[MediaType] = Nil,
     produces: List[MediaType] = Nil,
-    authorization: SecurityPredicate[USER] = new AlwaysDeny[USER]
+    authorization: (IN, PathParams) => SecurityPredicate[USER] = (_:IN, _:PathParams) => new AlwaysDeny[USER]
 )
 
 class Safe[F[_], USER <: AuthenticatedUser[_, _]] {
   def route[PathParams <: HList](path: HLinx[PathParams]): SafeRoute[F, USER, PathParams] =
-    new SafeRoute[F, USER, PathParams](RouteBuilderData[PathParams, USER](path))
+    new SafeRoute[F, USER, PathParams](RouteBuilderData[Nothing, PathParams, USER](path))
 }
 
-class SafeRoute[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList](data: RouteBuilderData[PathParams, USER]) {
+class SafeRoute[F[_],USER <: AuthenticatedUser[_, _], PathParams <: HList](data: RouteBuilderData[_, PathParams, USER]) {
   def queryParams[A](param: QueryParam[A]): SafeRoute[F, USER, PathParams] = queryParams(param ::: HNil)
   def queryParams[A <: HList](params: A): SafeRoute[F, USER, PathParams]   = new SafeRoute[F, USER, PathParams](data.copy(queryParams = params))
   def consumes[IN](mediaType: MediaType*): SafeRouteWithIn[F, USER, PathParams, IN] =
-    new SafeRouteWithIn[F, USER, PathParams, IN](data.copy(consumes = mediaType.toList))
-  def produces[OUT](mediaType: MediaType*): SafeRouteWithOut[F, USER, PathParams, OUT] =
-    new SafeRouteWithOut[F, USER, PathParams, OUT](data.copy(produces = mediaType.toList))
+    new SafeRouteWithIn[F, USER, PathParams, IN](RouteBuilderData[IN, PathParams, USER](data.route, data.queryParams, mediaType.toList, data.produces))
+  def produces[OUT](mediaType: MediaType*): SafeRouteWithOut[F, USER, PathParams, OUT] = ???
+    //new SafeRouteWithOut[F, USER, PathParams, OUT](data.copy(produces = mediaType.toList))
 }
 
-class SafeRouteWithIn[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, IN](data: RouteBuilderData[PathParams, USER]) {
+class SafeRouteWithIn[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, IN](data: RouteBuilderData[IN, PathParams, USER]) {
   def produces[OUT](mediaType: MediaType*): SafeRouteWithInAndOut[F, USER, PathParams, IN, OUT] =
     new SafeRouteWithInAndOut[F, USER, PathParams, IN, OUT](data.copy(produces = mediaType.toList))
 }
 
-class SafeRouteWithOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, OUT](data: RouteBuilderData[PathParams, USER]) {
-  def consumes[IN](mediaType: MediaType*): SafeRouteWithInAndOut[F, USER, PathParams, IN, OUT] =
-    new SafeRouteWithInAndOut[F, USER, PathParams, IN, OUT](data.copy(produces = mediaType.toList))
-  def authorization(authRule: SecurityPredicate[USER]): CompletableSafeRouteWithOut[F, USER, PathParams, OUT] =
-    new CompletableSafeRouteWithOut[F, USER, PathParams, OUT](data.copy(authorization = authRule))
+class SafeRouteWithOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, OUT](data: RouteBuilderData[Nothing, PathParams, USER]) {
+  def consumes[IN](mediaType: MediaType*): SafeRouteWithInAndOut[F, USER, PathParams, IN, OUT] = ???
+    //new SafeRouteWithInAndOut[F, USER, PathParams, IN, OUT](data.copy(produces = mediaType.toList))
+  def authorization(authRule: SecurityPredicate[USER]): CompletableSafeRouteWithOut[F, USER, PathParams, OUT] = ???
+    // new CompletableSafeRouteWithOut[F, USER, PathParams, OUT](data.copy(authorization = authRule))
 }
 
-class SafeRouteWithInAndOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, IN, OUT](data: RouteBuilderData[PathParams, USER]) {
+class SafeRouteWithInAndOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, IN, OUT](data: RouteBuilderData[IN, PathParams, USER]) {
   def authorization[A <: AuthenticatedUser[_, _]](
       authRule: (IN, PathParams) => SecurityPredicate[A]): CompletableSafeRouteWithInAndOut[F, USER, PathParams, IN, OUT] = ???
     //new CompletableSafeRouteWithInAndOut[F, USER, IN, OUT, PathParams](data.copy(authorization = authRule))
 }
 
-class CompletableSafeRouteWithOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, OUT](data: RouteBuilderData[PathParams, USER]) {
-  def GET(f: (USER, PathParams) => Directive[F, OUT]): CompleteRoute[F, USER, OUT, PathParams] =
-    new CompleteRoute[F, USER, OUT, PathParams](data.route, Method.GET, data.queryParams, data.consumes, data.produces, data.authorization)
+class CompletableSafeRouteWithOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, OUT](data: RouteBuilderData[Nothing, PathParams, USER]) {
+  def GET(f: (USER, PathParams) => Directive[F, OUT]): CompleteRoute[F, USER, Nothing, OUT, PathParams] =
+    new CompleteRoute[F, USER, Nothing, OUT, PathParams](data.route, Method.GET, data.queryParams, data.consumes, data.produces, data.authorization)
 }
 
-class CompletableSafeRouteWithInAndOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, IN, OUT](data: RouteBuilderData[PathParams, USER]) {
-  def POST(f: (USER, IN, PathParams) => Directive[F, OUT]): CompleteRoute[F, USER, OUT, PathParams] =
-    new CompleteRoute[F, USER, OUT, PathParams](data.route, Method.POST, data.queryParams, data.consumes, data.produces, data.authorization)
+class CompletableSafeRouteWithInAndOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, IN, OUT](data: RouteBuilderData[IN, PathParams, USER]) {
+  def POST(f: (USER, IN, PathParams) => Directive[F, OUT]): CompleteRoute[F, USER, IN, OUT, PathParams] =
+    new CompleteRoute[F, USER, IN, OUT, PathParams](data.route, Method.POST, data.queryParams, data.consumes, data.produces, data.authorization)
 }
 
 class SecurityPredicate[USER <: AuthenticatedUser[_, _]](predicate: USER => Boolean) {
