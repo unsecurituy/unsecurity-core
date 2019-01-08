@@ -17,6 +17,7 @@ val directivesVersion = "0.20.0-M4-1"
 libraryDependencies := Seq(
   "io.circe"           %% "circe-parser"        % circeVersion,
   "org.http4s"         %% "http4s-blaze-client" % http4sVersion,
+  "org.http4s"         %% "http4s-blaze-server" % http4sVersion,
   "no.scalabin.http4s" %% "http4s-directives"   % directivesVersion,
   "org.scalatest"      %% "scalatest"           % "3.0.5" % Test
 )

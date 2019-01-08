@@ -27,6 +27,10 @@ object HLinx {
 
   def splitPath(path: String): List[String] = path.split("/").toList.filter(_.nonEmpty)
 
+  sealed trait SimpleLinx
+  case class SimpleStatic(s: String) extends SimpleLinx
+  case object SimplePathParam        extends SimpleLinx
+
   sealed trait HLinx[T <: HList] {
     def /(element: String): Static[T] = {
       splitPath(element).tail
@@ -38,6 +42,7 @@ object HLinx {
     def capture(s: String): Option[Either[String, T]] = extract(splitPath(s).reverse)
     def extract(s: List[String]): Option[Either[String, T]]
     def overlaps[O <: HList](other: HLinx[O]): Boolean
+    def toSimple: List[SimpleLinx]
   }
 
   case object Root extends HLinx[HNil] {
@@ -49,6 +54,7 @@ object HLinx {
         case Root => true
         case _    => false
       }
+    override def toSimple: List[SimpleLinx] = Nil
   }
 
   case class Static[A <: HList](parent: HLinx[A], element: String) extends HLinx[A] {
@@ -62,6 +68,9 @@ object HLinx {
         case Static(otherParent, otherElement) => element == otherElement && parent.overlaps(otherParent)
         case Variable(otherParent, _, _)       => parent.overlaps(otherParent)
       }
+
+    def toSimple: List[SimpleLinx] =
+      SimpleStatic(element) :: parent.toSimple
   }
   case class Variable[H, T <: HList](parent: HLinx[T], P: PathParamConverter[H], element: String) extends HLinx[H ::: T] {
     override def extract(s: List[String]): Option[Either[String, H ::: T]] = s match {
@@ -85,6 +94,8 @@ object HLinx {
         case Variable(otherParent, _, _) => parent.overlaps(otherParent)
       }
     }
+    override def toSimple: List[SimpleLinx] =
+      SimplePathParam :: parent.toSimple
   }
 
   implicit class S0(private val hlist: HNil) extends AnyVal {
