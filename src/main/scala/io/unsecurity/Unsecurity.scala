@@ -76,15 +76,29 @@ class UnsafeRoute[F[_], PathParams <: HList](data: RouteBuilderData[_, PathParam
     )
 }
 
+trait GroupableRoute {
+  def key: List[SimpleLinx]
+}
+
 case class UnsafeGetRoute[F[_], PathParams <: HList](
-    groupByPath: List[SimpleLinx],
-    pathDirective: Directive[F, PathParams],
+    key: List[SimpleLinx],
+    route: HLinx[PathParams],
     method: Method,
     f: PathParams => ResponseDirective[IO]
-)
+) extends GroupableRoute
 
 class CompletableUnsafeRouteWithOut[F[_], PathParams <: HList, OUT](data: RouteBuilderData[Nothing, PathParams, Nothing]) {
-  def GET(f: PathParams => Directive[F, OUT]): CompleteRoute[F, Nothing, Nothing, OUT, PathParams] = {
+  def consumes[IN]: CompletableUnsafeRouteWithInAndOut[F, PathParams, OUT, IN] =
+    new CompletableUnsafeRouteWithInAndOut[F, PathParams, OUT, IN](
+      data = new RouteBuilderData[IN, PathParams, Nothing](
+        route = data.route,
+        queryParams = data.queryParams,
+        consumes = List.empty,
+        produces = List(application.json),
+        authorization = (_, _) => new AlwaysAllow[Nothing]
+      )
+    )
+  def GET(f: PathParams => Directive[F, OUT]): UnsafeGetRoute[F, PathParams] = {
 //    new CompleteRoute[F, Nothing, Nothing, OUT, PathParams](
 //      route = data.route,
 //      method = Method.GET,
@@ -95,17 +109,29 @@ class CompletableUnsafeRouteWithOut[F[_], PathParams <: HList, OUT](data: RouteB
 //      f = (_, _, pp) => f(pp)
 //    )
 
-    UnsafeGetRoute(
-      groupByPath = data.route.toSimple.reverse,
-      ???,
-      ???,
-      ???
-    )
-
     // path abstraksjon som kan grupperes på
     // path-direktiv : PATHPARAMS
     // method for å kunne lage et direktiv
     // f : PATHPARAMS => ResponseDirective[IO]
+
+    UnsafeGetRoute[F, PathParams](
+      key = data.route.toSimple.reverse,
+      ???,
+      ???,
+      ???
+    )
+  }
+}
+
+case class UnsafePostRoute[F[_], IN, PathParams <: HList](
+    key: List[SimpleLinx],
+    pathDirective: Directive[F, PathParams],
+    method: Method,
+    f: (IN, PathParams) => ResponseDirective[IO]
+) extends GroupableRoute
+
+class CompletableUnsafeRouteWithInAndOut[F[_], PathParams <: HList, OUT, IN](data: RouteBuilderData[IN, PathParams, Nothing]) {
+  def POST(f: (IN, PathParams) => Directive[F, OUT]): UnsafePostRoute[F, IN, PathParams] = {
 
     ???
   }
