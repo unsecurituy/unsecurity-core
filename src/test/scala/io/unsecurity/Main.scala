@@ -18,6 +18,8 @@ object Main extends IOApp {
 
   val unsecurity = Unsecurity[IO, MyAuthenticatedUser]
 
+  val server: Serve[IO] = Serve[IO](port = 8088, host = "0.0.0.0")
+
   val route: UnsafeGetRoute[IO, String ::: HNil] =
     unsecurity.unsafe
       .route(Root / "hello" / param[String]("name"))
@@ -26,6 +28,7 @@ object Main extends IOApp {
         Directive.success("ok")
       }
 
+/*
   val route2: UnsafePostRoute[IO, String, String ::: HNil] =
     unsecurity.unsafe
       .route(Root / "hello" / param[String]("name"))
@@ -35,17 +38,17 @@ object Main extends IOApp {
         val name = params.tupled
         Directive.success(s"hello, ${name}")
       }
+*/
 
+/*
   val l: List[GroupableRoute] = List(route, route2)
 
   private val linxesToRoutes: Map[List[SimpleLinx], List[GroupableRoute]] = l.groupBy(_.key)
 
   println(linxesToRoutes)
+*/
 
   override def run(args: List[String]): IO[ExitCode] = {
-    val server =
-      Serve(port = 8088, host = "0.0.0.0")
-
     val pf = new PartialFunction[String, Directive[IO, Response[IO]]] {
       override def isDefinedAt(x: String): Boolean = route.route.capture(x).isDefined
 
