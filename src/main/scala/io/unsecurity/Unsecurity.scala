@@ -6,12 +6,12 @@ import io.unsecurity.hlinx.HLinx._
 import io.unsecurity.hlinx.QueryParam
 import no.scalabin.http4s.directives.Conditional.ResponseDirective
 import no.scalabin.http4s.directives.Directive
-import org.http4s.{EntityEncoder, Method, Response, Status}
+import org.http4s.{EntityDecoder, EntityEncoder, Method, Response, Status}
 
 class Unsecurity[F[_] : Monad, USER <: AuthenticatedUser[_, _]] {
   def safe: Safe[F, USER] = new Safe[F, USER]()
 
-  def unsafe: Unsafe[F] = new Unsafe[F]()
+  def unsafe[PathParams <: HList, OUT](route: HLinx[PathParams]): UnsafeRoute[F, PathParams] = new UnsafeRoute[F, PathParams](RouteBuilderData[Nothing, PathParams, Nothing](route))
 }
 
 object Unsecurity {
@@ -102,7 +102,7 @@ case class UnsafeGetRoute[F[_], PathParams <: HList](key: List[SimpleLinx],
 
 class CompletableUnsafeRouteWithOut[F[_] : Monad, PathParams <: HList, OUT](data: RouteBuilderData[Nothing, PathParams, Nothing],
                                                                             entityEncoder: EntityEncoder[F, OUT]) {
-  def consumes[IN]: CompletableUnsafeRouteWithInAndOut[F, PathParams, OUT, IN] =
+  def consumes[IN](implicit entityDecoder: EntityDecoder[F, IN]): CompletableUnsafeRouteWithInAndOut[F, PathParams, OUT, IN] =
     new CompletableUnsafeRouteWithInAndOut[F, PathParams, OUT, IN](
       data = new RouteBuilderData[IN, PathParams, Nothing](
         route = data.route,
@@ -110,7 +110,9 @@ class CompletableUnsafeRouteWithOut[F[_] : Monad, PathParams <: HList, OUT](data
         consumes = List.empty,
         produces = List(application.json),
         authorization = (_, _) => new AlwaysAllow[Nothing]
-      )
+      ),
+      entityEncoder,
+      entityDecoder
     )
 
   def GET(f: PathParams => Directive[F, OUT]): UnsafeGetRoute[F, PathParams] = {
@@ -119,31 +121,10 @@ class CompletableUnsafeRouteWithOut[F[_] : Monad, PathParams <: HList, OUT](data
     // method for å kunne lage et direktiv
     // f : PATHPARAMS => ResponseDirective[IO]
 
-    val pf = new PartialFunction[String, Directive[F, PathParams]] {
-      override def isDefinedAt(x: String): Boolean = data.route.capture(x).isDefined
-
-      override def apply(v1: String): Directive[F, PathParams] = {
-        val value: Either[String, PathParams] = data.route.capture(v1).get
-
-        value match {
-          case Left(errorMsg) =>
-            Directive.error(
-              Response(Status.BadRequest)
-                .withEntity(errorMsg)
-            )
-
-          case Right(params) =>
-            Directive.success(params)
-
-        }
-      }
-    }
-
-
     UnsafeGetRoute[F, PathParams](
       key = data.route.toSimple.reverse,
       route = data.route,
-      routePf = pf,
+      routePf = Util.createPf(data.route),
       method = Method.GET,
       f = (pp: PathParams) =>
         f(pp).map { out =>
@@ -154,16 +135,61 @@ class CompletableUnsafeRouteWithOut[F[_] : Monad, PathParams <: HList, OUT](data
   }
 }
 
-case class UnsafePostRoute[F[_], IN, PathParams <: HList](key: List[SimpleLinx],
-                                                          pathDirective: Directive[F, PathParams],
-                                                          method: Method,
-                                                          f: (IN, PathParams) => ResponseDirective[IO]
-                                                         ) extends GroupableRoute
+object Util {
+  def createPf[F[_] : Monad, PathParams <: HList](route: HLinx[PathParams]): PartialFunction[String, Directive[F, PathParams]] = new PartialFunction[String, Directive[F, PathParams]] {
+    override def isDefinedAt(x: String): Boolean = route.capture(x).isDefined
 
-class CompletableUnsafeRouteWithInAndOut[F[_], PathParams <: HList, OUT, IN](data: RouteBuilderData[IN, PathParams, Nothing]) {
-  def POST(f: (IN, PathParams) => Directive[F, OUT]): UnsafePostRoute[F, IN, PathParams] = {
+    override def apply(v1: String): Directive[F, PathParams] = {
+      val value: Either[String, PathParams] = route.capture(v1).get
 
-    ???
+      value match {
+        case Left(errorMsg) =>
+          Directive.error(
+            Response(Status.BadRequest)
+              .withEntity(errorMsg)
+          )
+
+        case Right(params) =>
+          Directive.success(params)
+
+      }
+    }
+  }
+
+}
+
+case class UnsafePostRoute[F[_] :Monad, IN, OUT, PathParams <: HList](key: List[SimpleLinx],
+                                                               route: HLinx[PathParams],
+                                                               routePf: PartialFunction[String, Directive[F, PathParams]],
+                                                               method: Method,
+                                                               f: (IN, PathParams) => ResponseDirective[F]
+                                                              ) extends GroupableRoute with Routable[F] {
+  override def toRoute: PartialFunction[String, ResponseDirective[F]] = {
+    routePf.andThen(
+      pathParamsDir =>
+        for {
+          pathParams <- pathParamsDir
+          req <- Directive.request[F]
+          res <- f(pathParams)
+        } yield {
+          res
+        }
+    )
+  }
+}
+
+class CompletableUnsafeRouteWithInAndOut[F[_] : Monad, PathParams <: HList, OUT, IN](data: RouteBuilderData[IN, PathParams, Nothing],
+                                                                                     entityEncoder: EntityEncoder[F, OUT],
+                                                                                     entityDecoder: EntityDecoder[F, IN]
+                                                                                    ) {
+  def POST(f: (IN, PathParams) => Directive[F, OUT]): UnsafePostRoute[F, IN, OUT, PathParams] = {
+    UnsafePostRoute(
+      key = data.route.toSimple.reverse,
+      route = data.route,
+      routePf = Util.createPf[F, PathParams](data.route),
+      method = Method.POST,
+      f = ???
+    )
   }
 }
 

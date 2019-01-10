@@ -21,38 +21,35 @@ object Main extends IOApp {
   val server: Serve[IO] = Serve[IO](port = 8088, host = "0.0.0.0")
 
   val helloWorld: UnsafeGetRoute[IO, HNil] =
-    unsecurity.unsafe
-      .route(Root / "hello")
+    unsecurity.unsafe(route = Root / "hello")
       .produces[String]
       .GET { _ =>
         Directive.success("Hello world!")
       }
 
   val helloName: UnsafeGetRoute[IO, String ::: HNil] =
-    unsecurity.unsafe
-      .route(Root / "hello" / param[String]("name"))
+    unsecurity.unsafe(route = Root / "hello" / param[String]("name"))
       .produces[String]
       .GET { case (name ::: HNil) =>
         Directive.success(s"Hello, $name!")
       }
 
-  /*
-    val route2: UnsafePostRoute[IO, String, String ::: HNil] =
-      unsecurity.unsafe
-        .route(Root / "hello" / param[String]("name"))
-        .produces[String]
-        .consumes[String]
-        .POST { (body, params) =>
-          val name = params.tupled
-          Directive.success(s"hello, ${name}")
-        }
-  */
+  val postRoute: UnsafePostRoute[IO, String, String, String ::: HNil] =
+    unsecurity.unsafe(route = Root / "hello" / param[String]("name"))
+      .produces[String]
+      .consumes[String]
+      .POST { case (body, (name ::: HNil))
+        =>
+        Directive.success(s"hello, ${name}")
+      }
 
   val routes: List[Routable[IO]] = List(helloWorld, helloName)
 
   override def run(args: List[String]): IO[ExitCode] = {
     import cats.implicits._
 
-    server.stream(routes.map(_.toRoute).reduce(_ orElse _)).compile.drain.as(ExitCode.Success)
+    val reducedRoutes = routes.map(_.toRoute).reduce(_ orElse _)
+
+    server.stream(reducedRoutes).compile.drain.as(ExitCode.Success)
   }
 }
