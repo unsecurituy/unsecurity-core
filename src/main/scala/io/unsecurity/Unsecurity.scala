@@ -1,20 +1,21 @@
 package io.unsecurity
 
+import cats.Monad
 import cats.effect.IO
 import io.unsecurity.hlinx.HLinx._
 import io.unsecurity.hlinx.QueryParam
 import no.scalabin.http4s.directives.Conditional.ResponseDirective
 import no.scalabin.http4s.directives.Directive
-import org.http4s.{Method, Response, Status}
+import org.http4s.{EntityEncoder, Method, Response, Status}
 
-class Unsecurity[F[_], USER <: AuthenticatedUser[_, _]] {
+class Unsecurity[F[_] : Monad, USER <: AuthenticatedUser[_, _]] {
   def safe: Safe[F, USER] = new Safe[F, USER]()
 
   def unsafe: Unsafe[F] = new Unsafe[F]()
 }
 
 object Unsecurity {
-  def apply[F[_], USER <: AuthenticatedUser[_, _]]: Unsecurity[F, USER] = new Unsecurity()
+  def apply[F[_] : Monad, USER <: AuthenticatedUser[_, _]]: Unsecurity[F, USER] = new Unsecurity()
 }
 
 trait AuthenticatedUser[ID, PROFILE] {
@@ -39,38 +40,29 @@ class AlwaysAllow[USER <: AuthenticatedUser[_, _]] extends SecurityPredicate[USE
 
 class AlwaysDeny[USER <: AuthenticatedUser[_, _]] extends SecurityPredicate[USER](_ => false)
 
-class CompleteRoute2[F[_], USER <: AuthenticatedUser[_, _], IN, ResponseType, PathParams <: HList](
-                                                                                                    route: List[SimpleLinx],
-                                                                                                    method: Method,
-                                                                                                    pathDirective: Directive[F, Response[F]],
-                                                                                                    resultDirective: PathParams => Directive[F, Response[F]]
-                                                                                                  )
-
-case class CompleteRoute[F[_], USER <: AuthenticatedUser[_, _], IN, OUT, PathParams <: HList](
-                                                                                               route: HLinx[PathParams],
-                                                                                               method: Method,
-                                                                                               queryParams: HList,
-                                                                                               consumes: List[MediaType],
-                                                                                               produces: List[MediaType],
-                                                                                               authorization: (IN, PathParams) => SecurityPredicate[USER],
-                                                                                               f: (USER, IN, PathParams) => Directive[F, OUT]
+case class CompleteRoute[F[_], USER <: AuthenticatedUser[_, _], IN, OUT, PathParams <: HList](route: HLinx[PathParams],
+                                                                                              method: Method,
+                                                                                              queryParams: HList,
+                                                                                              consumes: List[MediaType],
+                                                                                              produces: List[MediaType],
+                                                                                              authorization: (IN, PathParams) => SecurityPredicate[USER],
+                                                                                              f: (USER, IN, PathParams) => Directive[F, OUT]
                                                                                              )
 
-private case class RouteBuilderData[IN, PathParams <: HList, USER <: AuthenticatedUser[_, _]](
-                                                                                               route: HLinx[PathParams],
-                                                                                               queryParams: HList = HNil,
-                                                                                               consumes: List[MediaType] = Nil,
-                                                                                               produces: List[MediaType] = Nil,
-                                                                                               authorization: (IN, PathParams) => SecurityPredicate[USER] = (_: IN, _: PathParams) => new AlwaysDeny[USER]
+private case class RouteBuilderData[IN, PathParams <: HList, USER <: AuthenticatedUser[_, _]](route: HLinx[PathParams],
+                                                                                              queryParams: HList = HNil,
+                                                                                              consumes: List[MediaType] = Nil,
+                                                                                              produces: List[MediaType] = Nil,
+                                                                                              authorization: (IN, PathParams) => SecurityPredicate[USER] = (_: IN, _: PathParams) => new AlwaysDeny[USER]
                                                                                              )
 
-class Unsafe[F[_]] {
+class Unsafe[F[_] : Monad] {
   def route[PathParams <: HList](path: HLinx[PathParams]): UnsafeRoute[F, PathParams] =
     new UnsafeRoute[F, PathParams](RouteBuilderData[Nothing, PathParams, Nothing](path))
 }
 
-class UnsafeRoute[F[_], PathParams <: HList](data: RouteBuilderData[_, PathParams, Nothing]) {
-  def produces[OUT]: CompletableUnsafeRouteWithOut[F, PathParams, OUT] =
+class UnsafeRoute[F[_] : Monad, PathParams <: HList](data: RouteBuilderData[_, PathParams, Nothing]) {
+  def produces[OUT](implicit entityEncoder: EntityEncoder[F, OUT]): CompletableUnsafeRouteWithOut[F, PathParams, OUT] =
     new CompletableUnsafeRouteWithOut[F, PathParams, OUT](
       data = new RouteBuilderData[Nothing, PathParams, Nothing](
         route = data.route,
@@ -78,7 +70,8 @@ class UnsafeRoute[F[_], PathParams <: HList](data: RouteBuilderData[_, PathParam
         consumes = List.empty,
         produces = List(application.json),
         authorization = (_, _) => new AlwaysAllow[Nothing]
-      )
+      ),
+      entityEncoder = entityEncoder
     )
 }
 
@@ -86,14 +79,29 @@ trait GroupableRoute {
   def key: List[SimpleLinx]
 }
 
-case class UnsafeGetRoute[F[_], PathParams <: HList](
-                                                      key: List[SimpleLinx],
-                                                      route: HLinx[PathParams],
-                                                      method: Method,
-                                                      f: PathParams => ResponseDirective[F]
-                                                    ) extends GroupableRoute
+trait Routable[F[_]] {
+  def toRoute: PartialFunction[String, ResponseDirective[F]]
+}
 
-class CompletableUnsafeRouteWithOut[F[_], PathParams <: HList, OUT](data: RouteBuilderData[Nothing, PathParams, Nothing]) {
+case class UnsafeGetRoute[F[_], PathParams <: HList](key: List[SimpleLinx],
+                                                     route: HLinx[PathParams],
+                                                     routePf: PartialFunction[String, Directive[F, PathParams]],
+                                                     method: Method,
+                                                     f: PathParams => ResponseDirective[F]
+                                                    ) extends GroupableRoute with Routable[F] {
+  override def toRoute: PartialFunction[String, ResponseDirective[F]] = {
+    routePf.andThen {
+      pathParamsDir =>
+        pathParamsDir.flatMap {
+          pathParams =>
+            f(pathParams)
+        }
+    }
+  }
+}
+
+class CompletableUnsafeRouteWithOut[F[_] : Monad, PathParams <: HList, OUT](data: RouteBuilderData[Nothing, PathParams, Nothing],
+                                                                            entityEncoder: EntityEncoder[F, OUT]) {
   def consumes[IN]: CompletableUnsafeRouteWithInAndOut[F, PathParams, OUT, IN] =
     new CompletableUnsafeRouteWithInAndOut[F, PathParams, OUT, IN](
       data = new RouteBuilderData[IN, PathParams, Nothing](
@@ -106,41 +114,50 @@ class CompletableUnsafeRouteWithOut[F[_], PathParams <: HList, OUT](data: RouteB
     )
 
   def GET(f: PathParams => Directive[F, OUT]): UnsafeGetRoute[F, PathParams] = {
-    //    new CompleteRoute[F, Nothing, Nothing, OUT, PathParams](
-    //      route = data.route,
-    //      method = Method.GET,
-    //      queryParams = data.queryParams,
-    //      consumes = data.consumes,
-    //      produces = data.produces,
-    //      authorization = data.authorization,
-    //      f = (_, _, pp) => f(pp)
-    //    )
-
     // path abstraksjon som kan grupperes på
-    // path-direktiv : PATHPARAMS
+    // route som kan brukes til å lage partial function
     // method for å kunne lage et direktiv
     // f : PATHPARAMS => ResponseDirective[IO]
+
+    val pf = new PartialFunction[String, Directive[F, PathParams]] {
+      override def isDefinedAt(x: String): Boolean = data.route.capture(x).isDefined
+
+      override def apply(v1: String): Directive[F, PathParams] = {
+        val value: Either[String, PathParams] = data.route.capture(v1).get
+
+        value match {
+          case Left(errorMsg) =>
+            Directive.error(
+              Response(Status.BadRequest)
+                .withEntity(errorMsg)
+            )
+
+          case Right(params) =>
+            Directive.success(params)
+
+        }
+      }
+    }
+
 
     UnsafeGetRoute[F, PathParams](
       key = data.route.toSimple.reverse,
       route = data.route,
+      routePf = pf,
       method = Method.GET,
       f = (pp: PathParams) =>
-        for {
-          out <- f(pp)
-        } yield {
+        f(pp).map { out =>
           Response[F]()
-            .withEntity("test")
+            .withEntity(out)(entityEncoder)
         }
     )
   }
 }
 
-case class UnsafePostRoute[F[_], IN, PathParams <: HList](
-                                                           key: List[SimpleLinx],
-                                                           pathDirective: Directive[F, PathParams],
-                                                           method: Method,
-                                                           f: (IN, PathParams) => ResponseDirective[IO]
+case class UnsafePostRoute[F[_], IN, PathParams <: HList](key: List[SimpleLinx],
+                                                          pathDirective: Directive[F, PathParams],
+                                                          method: Method,
+                                                          f: (IN, PathParams) => ResponseDirective[IO]
                                                          ) extends GroupableRoute
 
 class CompletableUnsafeRouteWithInAndOut[F[_], PathParams <: HList, OUT, IN](data: RouteBuilderData[IN, PathParams, Nothing]) {
