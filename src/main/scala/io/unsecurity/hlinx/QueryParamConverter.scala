@@ -6,4 +6,4 @@ object QueryParamConverter {
   implicit val intParamConverter: QueryParamConverter[Int]       = (s: String) => Try(s.toInt).toEither.left.map(_.getMessage)
   implicit val stringParamConverter: QueryParamConverter[String] = (s: String) => Right(s)
 }
-case class QueryParam[A](name: String, converter: QueryParamConverter[A])
+case class QueryParam[A : QueryParamConverter](name: String)

@@ -2,7 +2,7 @@ package io.unsecurity
 
 import cats.effect._
 import io.unsecurity.Test.MyAuthenticatedUser
-import io.unsecurity.Unsecure.{Endpoint, Routes, UnsecureGetEndpoint, UnsecurePostEndpointRW}
+import io.unsecurity.Unsecure.{Endpoint, Endpoints, UnsecureGetEndpoint, UnsecurePostEndpointRW}
 import no.scalabin.http4s.directives.Conditional.ResponseDirective
 import no.scalabin.http4s.directives.Directive
 import io.unsecurity.hlinx.HLinx._
@@ -42,11 +42,14 @@ object Main extends IOApp {
       .POST { case (body, (name ::: HNil)) => Directive.success(s"hello, ${name}. This is $body") }
 
   val dummy = unsecurity
-    .unsecuredRoute(Root / "fjon" / param[Int]("antall"))
+    .unsecuredRoute(Root / "fjon" / param[Int]("max"))
     .producesJson[String]
     .GET { p =>
-      val antall ::: HNil = p
-      Directive.success(s"$antall")
+      val max ::: HNil = p
+
+      val range = Range(1, max).toList
+
+      Directive.success(range.mkString(", "))
     }
 
   override def run(args: List[String]): IO[ExitCode] = {
@@ -54,7 +57,7 @@ object Main extends IOApp {
 
     server
       .serve(
-        new Routes[IO]
+        new Endpoints[IO]
           .addRoute(helloWorld)
           .addRoute(helloName)
           .addRoute(helloName)

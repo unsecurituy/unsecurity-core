@@ -1,7 +1,8 @@
 package io.unsecurity
 import cats.Monad
 import cats.effect.Sync
-import io.unsecurity.hlinx.HLinx.{HLinx, HList, SimpleLinx}
+import io.unsecurity.hlinx.HLinx.{:::, HCons, HLinx, HList, HNil, SimpleLinx}
+import io.unsecurity.hlinx.{HLinx, QueryParam, QueryParamConverter}
 import no.scalabin.http4s.directives.Conditional.ResponseDirective
 import no.scalabin.http4s.directives.{Directive, Plan, RequestDirectives}
 import org.http4s.headers.Allow
@@ -9,8 +10,8 @@ import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Method, Response, S
 
 object Unsecure {
 
-  class Routes[F[_]: Sync](rs: List[Endpoint[F]] = List.empty) {
-    def addRoute[PathParams <: HList](route: EndpointWithPath[F, PathParams]): Routes[F] = {
+  class Endpoints[F[_]: Sync](rs: List[Endpoint[F]] = List.empty) {
+    def addRoute[PathParams <: HList](route: EndpointWithPath[F, PathParams]): Endpoints[F] = {
       rs.find(
           r => r.overlaps(route.path).isDefined && route.method == r.method
         )
@@ -19,7 +20,7 @@ object Unsecure {
             s"overlapping method/path: ${overlapping.method.name} ${overlapping.key.mkString("/")}")
         }
 
-      new Routes(route :: rs)
+      new Endpoints(route :: rs)
     }
 
     def toHttpRoutes: HttpRoutes[F] = {
@@ -49,7 +50,7 @@ object Unsecure {
   trait EndpointWithPath[F[_], PathParams <: HList] extends Endpoint[F] {
     def path: HLinx[PathParams]
 
-    def overlaps[OtherPathParams <: HList](otherPath: HLinx[OtherPathParams]): Option[String] = {
+    override def overlaps[OtherPathParams <: HList](otherPath: HLinx[OtherPathParams]): Option[String] = {
       if (path.overlaps(otherPath))
         Some(path.toString)
       else
@@ -58,7 +59,25 @@ object Unsecure {
 
   }
 
-  class UnsecureEndpoint[F[_]: Monad, PathParams <: HList](route: HLinx[PathParams]) {
+  case class QueryParams[T <: HList] private (params: T = HNil) {
+    def &[H](queryParam: QueryParam[H]): QueryParams[QueryParam[H] ::: T] =
+      this.copy(HCons(queryParam, params))
+  }
+  object QueryParams {
+    val empty = QueryParams(HNil)
+    def of[A: QueryParamConverter](name: String): QueryParams[HLinx.:::[QueryParam[A], HNil]] =
+      QueryParams(QueryParam[A](name) ::: HNil)
+  }
+
+  case class UnsecureEndpoint[F[_]: Monad, PathParams <: HList, QParams <: HList](
+      route: HLinx[PathParams],
+      queryParams: QueryParams[QParams]) {
+
+    // TODO se på phantomTypes
+    def queryParams[QP <: HList](qParams: QueryParams[QP]): UnsecureEndpoint[F, PathParams, QP] = {
+      copy(queryParams = qParams)
+    }
+
     def producesJson[W](implicit entityEncoder: EntityEncoder[F, W]): UnsecureEndpointW[F, PathParams, W] =
       new UnsecureEndpointW[F, PathParams, W](
         route,
