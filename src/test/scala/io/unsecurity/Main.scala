@@ -15,25 +15,34 @@ object Main extends IOApp {
 
   val helloWorld: UnsecuredGetRoute[IO, HNil] =
     unsecurity
-      .unsecured(route = Root / "hello")
+      .unsecuredRoute(Root / "hello")
       .producesJson[String]
       .GET { _ =>
         Directive.success("Hello world!")
       }
 
   val helloName: UnsecuredGetRoute[IO, String ::: HNil] =
-    unsecurity.unsecured(route = Root / "hello" / param[String]("name"))
+    unsecurity.unsecuredRoute(Root / "hello" / param[String]("name"))
       .producesJson[String]
       .GET {
         case (name ::: HNil) =>
           Directive.success(s"Hello, $name!")
       }
 
-  val postRoute: UnsafePostRoute[IO, String, String, String ::: HNil] =
-    unsecurity.unsecured(route = Root / "hello" / param[String]("name"))
+  val postRoute: UnsafePostRoute[IO, String ::: HNil, String, String] =
+    unsecurity.unsecuredRoute(Root / "hello" / param[String]("name"))
       .producesJson[String]
       .consumesJson[String]
       .POST { case (body, (name ::: HNil)) => Directive.success(s"hello, ${name}. This is $body") }
+
+  val dummy = unsecurity
+    .unsecuredRoute(Root / "fjon" / param[Int]("antall"))
+    .producesJson[String]
+    .GET {
+      p =>
+        val antall ::: HNil = p
+        Directive.success(s"$antall")
+    }
 
   val routes: List[Route[IO]] = List(helloWorld, helloName, postRoute)
 

@@ -15,13 +15,86 @@ object Unsecured {
   }
 
   class UnsecuredRoute[F[_]: Monad, PathParams <: HList](route: HLinx[PathParams]) {
-    def producesJson[OUT](
-        implicit entityEncoder: EntityEncoder[F, OUT]): CompletableUnsecuredRouteWithOut[F, PathParams, OUT] =
-      new CompletableUnsecuredRouteWithOut[F, PathParams, OUT](
+    def producesJson[W](implicit entityEncoder: EntityEncoder[F, W]): UnsecuredRouteW[F, PathParams, W] =
+      new UnsecuredRouteW[F, PathParams, W](
         route,
         entityEncoder = entityEncoder
       )
   }
+
+  class UnsecuredRouteW[F[_]: Monad, PathParams <: HList, W](route: HLinx[PathParams],
+                                                             entityEncoder: EntityEncoder[F, W]) {
+    def consumesJson[R](implicit entityDecoder: EntityDecoder[F, R]): UnsecuredRouteRW[F, PathParams, R, W] =
+      new UnsecuredRouteRW[F, PathParams, R, W](
+        route = route,
+        entityEncoder = entityEncoder,
+        entityDecoder = entityDecoder
+      )
+
+    def GET(f: PathParams => Directive[F, W]): UnsecuredGetRoute[F, PathParams] = {
+      UnsecuredGetRoute[F, PathParams](
+        key = route.toSimple.reverse,
+        route = route,
+        routePf = Util.createPf(route),
+        method = Method.GET,
+        f = (pp: PathParams) =>
+          f(pp).map { out =>
+            Response[F]()
+              .withEntity(out)(entityEncoder)
+        }
+      )
+    }
+  }
+
+  class UnsecuredRouteRW[F[_]: Monad, PathParams <: HList, R, W](route: HLinx[PathParams],
+                                                                 entityEncoder: EntityEncoder[F, W],
+                                                                 entityDecoder: EntityDecoder[F, R]) {
+    def POST(f: (R, PathParams) => Directive[F, W]): UnsafePostRoute[F, PathParams, R, W] = {
+      UnsafePostRoute(
+        key = route.toSimple.reverse,
+        route = route,
+        routePf = Util.createPf[F, PathParams](route),
+        method = Method.POST,
+        entityDecoder = entityDecoder,
+        f = { (in, pp) =>
+          for {
+            res <- f(in, pp)
+          } yield {
+            Response[F]().withEntity(res)(entityEncoder)
+          }
+        }
+      )
+    }
+  }
+
+  case class UnsafePostRoute[F[_]: Monad, PathParams <: HList, R, W](
+                                                                      key: List[SimpleLinx],
+                                                                      route: HLinx[PathParams],
+                                                                      routePf: PartialFunction[String, Directive[F, PathParams]],
+                                                                      method: Method,
+                                                                      entityDecoder: EntityDecoder[F, R],
+                                                                      f: (R, PathParams) => ResponseDirective[F])
+    extends Route[F]
+      with RequestDirectives[F] {
+
+    override def compile: CompilableRoute[F] = {
+      implicit val dec: EntityDecoder[F, R] = entityDecoder
+      val fm: Any => ResponseDirective[F] = { (pp) =>
+      {
+        for {
+          in  <- request.bodyAs[F, R]
+          res <- f(in, pp.asInstanceOf[PathParams])
+        } yield { res }
+      }
+      }
+
+      CompilableRoute(
+        pathMatcher = routePf.asInstanceOf[PartialFunction[String, Directive[F, Any]]],
+        methodMap = Map(method -> fm)
+      )
+    }
+  }
+
 
   case class CompilableRoute[F[_]: Monad](pathMatcher: PartialFunction[String, Directive[F, Any]],
                                           methodMap: Map[Method, Any => ResponseDirective[F]]) {
@@ -62,80 +135,7 @@ object Unsecured {
     }
   }
 
-  class CompletableUnsecuredRouteWithOut[F[_]: Monad, PathParams <: HList, OUT](route: HLinx[PathParams],
-                                                                                entityEncoder: EntityEncoder[F, OUT]) {
-    def consumesJson[IN](
-        implicit entityDecoder: EntityDecoder[F, IN]): CompletableUnsafeRouteWithInAndOut[F, PathParams, OUT, IN] =
-      new CompletableUnsafeRouteWithInAndOut[F, PathParams, OUT, IN](
-        route = route,
-        entityEncoder = entityEncoder,
-        entityDecoder = entityDecoder
-      )
 
-    def GET(f: PathParams => Directive[F, OUT]): UnsecuredGetRoute[F, PathParams] = {
-      UnsecuredGetRoute[F, PathParams](
-        key = route.toSimple.reverse,
-        route = route,
-        routePf = Util.createPf(route),
-        method = Method.GET,
-        f = (pp: PathParams) =>
-          f(pp).map { out =>
-            Response[F]()
-              .withEntity(out)(entityEncoder)
-        }
-      )
-    }
-  }
-
-  case class UnsafePostRoute[F[_]: Monad, IN, OUT, PathParams <: HList](
-      key: List[SimpleLinx],
-      route: HLinx[PathParams],
-      routePf: PartialFunction[String, Directive[F, PathParams]],
-      method: Method,
-      entityDecoder: EntityDecoder[F, IN],
-      f: (IN, PathParams) => ResponseDirective[F])
-      extends Route[F]
-      with RequestDirectives[F] {
-
-    override def compile: CompilableRoute[F] = {
-      implicit val dec: EntityDecoder[F, IN] = entityDecoder
-      val fm: Any => ResponseDirective[F] = { (pp) =>
-        {
-          for {
-            in  <- request.bodyAs[F, IN]
-            res <- f(in, pp.asInstanceOf[PathParams])
-          } yield { res }
-        }
-      }
-
-      CompilableRoute(
-        pathMatcher = routePf.asInstanceOf[PartialFunction[String, Directive[F, Any]]],
-        methodMap = Map(method -> fm)
-      )
-    }
-  }
-
-  class CompletableUnsafeRouteWithInAndOut[F[_]: Monad, PathParams <: HList, OUT, IN](
-      route: HLinx[PathParams],
-      entityEncoder: EntityEncoder[F, OUT],
-      entityDecoder: EntityDecoder[F, IN]) {
-    def POST(f: (IN, PathParams) => Directive[F, OUT]): UnsafePostRoute[F, IN, OUT, PathParams] = {
-      UnsafePostRoute(
-        key = route.toSimple.reverse,
-        route = route,
-        routePf = Util.createPf[F, PathParams](route),
-        method = Method.POST,
-        entityDecoder = entityDecoder,
-        f = { (in, pp) =>
-          for {
-            res <- f(in, pp)
-          } yield {
-            Response[F]().withEntity(res)(entityEncoder)
-          }
-        }
-      )
-    }
-  }
 
 }
 

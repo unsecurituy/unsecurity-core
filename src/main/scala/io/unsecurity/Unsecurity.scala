@@ -21,7 +21,7 @@ object application {
 class Unsecurity[F[_]: Monad, USER <: AuthenticatedUser[_, _]] {
   def safe: Safe[F, USER] = new Safe[F, USER]()
 
-  def unsecured[PathParams <: HList, OUT](route: HLinx[PathParams]
+  def unsecuredRoute[PathParams <: HList, OUT](route: HLinx[PathParams]
                                          // , produces : MediaType[F, OUT]
                                          ): UnsecuredRoute[F, PathParams] = {
 
