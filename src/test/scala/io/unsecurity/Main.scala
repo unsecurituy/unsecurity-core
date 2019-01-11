@@ -2,7 +2,7 @@ package io.unsecurity
 
 import cats.effect._
 import io.unsecurity.Test.MyAuthenticatedUser
-import io.unsecurity.Unsecure.{Route, Routes, UnsafePostRoute, UnsecureGetRoute}
+import io.unsecurity.Unsecure.{Endpoint, Routes, UnsecureGetEndpoint, UnsecurePostEndpointRW}
 import no.scalabin.http4s.directives.Conditional.ResponseDirective
 import no.scalabin.http4s.directives.Directive
 import io.unsecurity.hlinx.HLinx._
@@ -12,9 +12,12 @@ import scala.concurrent.ExecutionContext.Implicits.global
 object Main extends IOApp {
   val unsecurity: Unsecurity[IO, MyAuthenticatedUser] = Unsecurity[IO, MyAuthenticatedUser]
 
-  val server: Server[IO] = Server[IO](port = 8088, host = "0.0.0.0")
+  val server: Server[IO] = Server[IO](
+    port = 8088,
+    host = "0.0.0.0"
+  )
 
-  val helloWorld: UnsecureGetRoute[IO, HNil] =
+  val helloWorld: UnsecureGetEndpoint[IO, HNil] =
     unsecurity
       .unsecuredRoute(Root / "hello")
       .producesJson[String]
@@ -22,7 +25,7 @@ object Main extends IOApp {
         Directive.success("Hello world!")
       }
 
-  val helloName: UnsecureGetRoute[IO, String ::: HNil] =
+  val helloName: UnsecureGetEndpoint[IO, String ::: HNil] =
     unsecurity
       .unsecuredRoute(Root / "hello" / param[String]("name"))
       .producesJson[String]
@@ -31,7 +34,7 @@ object Main extends IOApp {
           Directive.success(s"Hello, $name!")
       }
 
-  val postRoute: UnsafePostRoute[IO, String ::: HNil, String, String] =
+  val postRoute: UnsecurePostEndpointRW[IO, String ::: HNil, String, String] =
     unsecurity
       .unsecuredRoute(Root / "hello" / param[String]("name"))
       .producesJson[String]
@@ -61,4 +64,9 @@ object Main extends IOApp {
       .drain
       .as(ExitCode.Success)
   }
+
+  // GET /a/b/p[String]("s")?q=fisk => /a/b/[variable]
+  //                                   Set(q[Option[String]])
+  // GET /a/b/p[Int]("i")?q=fisk => /a/b/[variable]
+  // GET /a/b
 }

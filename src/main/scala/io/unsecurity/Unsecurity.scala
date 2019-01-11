@@ -2,7 +2,7 @@ package io.unsecurity
 
 import cats.Monad
 import cats.effect.IO
-import io.unsecurity.Unsecure.UnsecureRoute
+import io.unsecurity.Unsecure.UnsecureEndpoint
 import io.unsecurity.hlinx.HLinx._
 import io.unsecurity.hlinx.QueryParam
 import no.scalabin.http4s.directives.Conditional.ResponseDirective
@@ -23,9 +23,9 @@ class Unsecurity[F[_]: Monad, USER <: AuthenticatedUser[_, _]] {
 
   def unsecuredRoute[PathParams <: HList, OUT](route: HLinx[PathParams]
                                          // , produces : MediaType[F, OUT]
-                                         ): UnsecureRoute[F, PathParams] = {
+                                         ): UnsecureEndpoint[F, PathParams] = {
 
-    new UnsecureRoute[F, PathParams](route)
+    new UnsecureEndpoint[F, PathParams](route)
   }
 }
 

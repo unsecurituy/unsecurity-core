@@ -9,20 +9,21 @@ import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Method, Response, S
 
 object Unsecure {
 
-  class Routes[F[_]: Sync](rs: List[Route[F]] = List.empty) {
-    def addRoute(route: Route[F]): Routes[F] = {
+  class Routes[F[_]: Sync](rs: List[Endpoint[F]] = List.empty) {
+    def addRoute[PathParams <: HList](route: EndpointWithPath[F, PathParams]): Routes[F] = {
       rs.find(
-          r => route.key == r.key && route.method == r.method
+          r => r.overlaps(route.path).isDefined && route.method == r.method
         )
         .foreach { overlapping =>
-          throw new RuntimeException(s"overlapping method/path: ${overlapping.method.name} ${overlapping.key.mkString("/")}" )
+          throw new RuntimeException(
+            s"overlapping method/path: ${overlapping.method.name} ${overlapping.key.mkString("/")}")
         }
 
       new Routes(route :: rs)
     }
 
     def toHttpRoutes: HttpRoutes[F] = {
-      val linxesToList: Map[List[SimpleLinx], List[Route[F]]] = rs.groupBy(_.key)
+      val linxesToList: Map[List[SimpleLinx], List[Endpoint[F]]] = rs.groupBy(_.key)
       val mergedRoutes: List[PartialFunction[String, ResponseDirective[F]]] =
         linxesToList.mapValues(rs => rs.map(_.compile).reduce(_ merge _)).values.toList.map(_.compile)
 
@@ -38,34 +39,47 @@ object Unsecure {
     }
   }
 
-  trait Route[F[_]] {
+  trait Endpoint[F[_]] {
     def key: List[SimpleLinx]
     def method: Method
-    def compile: CompilableRoute[F]
+    def compile: CompilableEndpoint[F]
+    def overlaps[OtherPathParams <: HList](otherPath: HLinx[OtherPathParams]): Option[String]
   }
 
-  class UnsecureRoute[F[_]: Monad, PathParams <: HList](route: HLinx[PathParams]) {
-    def producesJson[W](implicit entityEncoder: EntityEncoder[F, W]): UnsecureRouteW[F, PathParams, W] =
-      new UnsecureRouteW[F, PathParams, W](
+  trait EndpointWithPath[F[_], PathParams <: HList] extends Endpoint[F] {
+    def path: HLinx[PathParams]
+
+    def overlaps[OtherPathParams <: HList](otherPath: HLinx[OtherPathParams]): Option[String] = {
+      if (path.overlaps(otherPath))
+        Some(path.toString)
+      else
+        None
+    }
+
+  }
+
+  class UnsecureEndpoint[F[_]: Monad, PathParams <: HList](route: HLinx[PathParams]) {
+    def producesJson[W](implicit entityEncoder: EntityEncoder[F, W]): UnsecureEndpointW[F, PathParams, W] =
+      new UnsecureEndpointW[F, PathParams, W](
         route,
         entityEncoder = entityEncoder
       )
   }
 
-  class UnsecureRouteW[F[_]: Monad, PathParams <: HList, W](route: HLinx[PathParams],
-                                                            entityEncoder: EntityEncoder[F, W]) {
-    def consumesJson[R](implicit entityDecoder: EntityDecoder[F, R]): UnsecureRouteRW[F, PathParams, R, W] =
-      new UnsecureRouteRW[F, PathParams, R, W](
+  class UnsecureEndpointW[F[_]: Monad, PathParams <: HList, W](route: HLinx[PathParams],
+                                                               entityEncoder: EntityEncoder[F, W]) {
+    def consumesJson[R](implicit entityDecoder: EntityDecoder[F, R]): UnsecureEndpointRW[F, PathParams, R, W] =
+      new UnsecureEndpointRW[F, PathParams, R, W](
         route = route,
         entityEncoder = entityEncoder,
         entityDecoder = entityDecoder
       )
 
-    def GET(f: PathParams => Directive[F, W]): UnsecureGetRoute[F, PathParams] = {
-      UnsecureGetRoute[F, PathParams](
+    def GET(f: PathParams => Directive[F, W]): UnsecureGetEndpoint[F, PathParams] = {
+      UnsecureGetEndpoint[F, PathParams](
         key = route.toSimple.reverse,
-        route = route,
-        routePf = Util.createPf(route),
+        path = route,
+        pathMatcher = createPathMatcher(route),
         method = Method.GET,
         f = (pp: PathParams) =>
           f(pp).map { out =>
@@ -76,14 +90,14 @@ object Unsecure {
     }
   }
 
-  class UnsecureRouteRW[F[_]: Monad, PathParams <: HList, R, W](route: HLinx[PathParams],
-                                                                entityEncoder: EntityEncoder[F, W],
-                                                                entityDecoder: EntityDecoder[F, R]) {
-    def POST(f: (R, PathParams) => Directive[F, W]): UnsafePostRoute[F, PathParams, R, W] = {
-      UnsafePostRoute(
+  class UnsecureEndpointRW[F[_]: Monad, PathParams <: HList, R, W](route: HLinx[PathParams],
+                                                                   entityEncoder: EntityEncoder[F, W],
+                                                                   entityDecoder: EntityDecoder[F, R]) {
+    def POST(f: (R, PathParams) => Directive[F, W]): UnsecurePostEndpointRW[F, PathParams, R, W] = {
+      UnsecurePostEndpointRW(
         key = route.toSimple.reverse,
-        route = route,
-        routePf = Util.createPf[F, PathParams](route),
+        path = route,
+        pathMatcher = createPathMatcher[F, PathParams](route),
         method = Method.POST,
         entityDecoder = entityDecoder,
         f = { (in, pp) =>
@@ -97,17 +111,17 @@ object Unsecure {
     }
   }
 
-  case class UnsafePostRoute[F[_]: Monad, PathParams <: HList, R, W](
+  case class UnsecurePostEndpointRW[F[_]: Monad, PathParams <: HList, R, W](
       key: List[SimpleLinx],
-      route: HLinx[PathParams],
-      routePf: PartialFunction[String, Directive[F, PathParams]],
+      path: HLinx[PathParams],
+      pathMatcher: PartialFunction[String, Directive[F, PathParams]],
       method: Method,
       entityDecoder: EntityDecoder[F, R],
       f: (R, PathParams) => ResponseDirective[F])
-      extends Route[F]
+      extends EndpointWithPath[F, PathParams]
       with RequestDirectives[F] {
 
-    override def compile: CompilableRoute[F] = {
+    override def compile: CompilableEndpoint[F] = {
       implicit val dec: EntityDecoder[F, R] = entityDecoder
       val fm: Any => ResponseDirective[F] = { (pp) =>
         {
@@ -118,16 +132,16 @@ object Unsecure {
         }
       }
 
-      CompilableRoute(
-        pathMatcher = routePf.asInstanceOf[PartialFunction[String, Directive[F, Any]]],
+      CompilableEndpoint(
+        pathMatcher = pathMatcher.asInstanceOf[PartialFunction[String, Directive[F, Any]]],
         methodMap = Map(method -> fm)
       )
     }
   }
 
-  case class CompilableRoute[F[_]: Monad](pathMatcher: PartialFunction[String, Directive[F, Any]],
-                                          methodMap: Map[Method, Any => ResponseDirective[F]]) {
-    def merge(other: CompilableRoute[F]): CompilableRoute[F] = {
+  case class CompilableEndpoint[F[_]: Monad](pathMatcher: PartialFunction[String, Directive[F, Any]],
+                                             methodMap: Map[Method, Any => ResponseDirective[F]]) {
+    def merge(other: CompilableEndpoint[F]): CompilableEndpoint[F] = {
       this.copy(
         methodMap = this.methodMap ++ other.methodMap
       )
@@ -149,25 +163,22 @@ object Unsecure {
     }
   }
 
-  case class UnsecureGetRoute[F[_]: Monad, PathParams <: HList](
+  case class UnsecureGetEndpoint[F[_]: Monad, PathParams <: HList](
       key: List[SimpleLinx],
-      route: HLinx[PathParams],
-      routePf: PartialFunction[String, Directive[F, PathParams]],
+      path: HLinx[PathParams],
+      pathMatcher: PartialFunction[String, Directive[F, PathParams]],
       method: Method,
       f: PathParams => ResponseDirective[F])
-      extends Route[F] {
-    override def compile: CompilableRoute[F] = {
-      CompilableRoute(
-        pathMatcher = routePf.asInstanceOf[PartialFunction[String, Directive[F, Any]]],
+      extends EndpointWithPath[F, PathParams] {
+    override def compile: CompilableEndpoint[F] = {
+      CompilableEndpoint(
+        pathMatcher = pathMatcher.asInstanceOf[PartialFunction[String, Directive[F, Any]]],
         methodMap = Map(method -> f.asInstanceOf[Any => ResponseDirective[F]])
       )
     }
   }
 
-}
-
-object Util {
-  def createPf[F[_]: Monad, PathParams <: HList](
+  def createPathMatcher[F[_]: Monad, PathParams <: HList](
       route: HLinx[PathParams]): PartialFunction[String, Directive[F, PathParams]] =
     new PartialFunction[String, Directive[F, PathParams]] {
       override def isDefinedAt(x: String): Boolean = route.capture(x).isDefined
@@ -188,5 +199,4 @@ object Util {
         }
       }
     }
-
 }
