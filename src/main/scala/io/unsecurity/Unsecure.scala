@@ -1,12 +1,42 @@
 package io.unsecurity
 import cats.Monad
-import io.unsecurity.hlinx.HLinx.{HLinx, HList, HNil, SimpleLinx}
+import cats.effect.Sync
+import io.unsecurity.hlinx.HLinx.{HLinx, HList, SimpleLinx}
 import no.scalabin.http4s.directives.Conditional.ResponseDirective
-import no.scalabin.http4s.directives.{Directive, RequestDirectives}
+import no.scalabin.http4s.directives.{Directive, Plan, RequestDirectives}
 import org.http4s.headers.Allow
-import org.http4s.{EntityDecoder, EntityEncoder, Method, Response, Status}
+import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Method, Response, Status}
 
-object Unsecured {
+object Unsecure {
+
+  class Routes[F[_]: Sync](rs: List[Route[F]] = List.empty) {
+    def addRoute(route: Route[F]): Routes[F] = {
+      rs.find(
+          r => route.key == r.key && route.method == r.method
+        )
+        .foreach { overlapping =>
+          throw new RuntimeException(s"overlapping method/path: ${overlapping.method.name} ${overlapping.key.mkString("/")}" )
+        }
+
+      new Routes(route :: rs)
+    }
+
+    def toHttpRoutes: HttpRoutes[F] = {
+      val linxesToList: Map[List[SimpleLinx], List[Route[F]]] = rs.groupBy(_.key)
+      val mergedRoutes: List[PartialFunction[String, ResponseDirective[F]]] =
+        linxesToList.mapValues(rs => rs.map(_.compile).reduce(_ merge _)).values.toList.map(_.compile)
+
+      val reducedRoutes: PartialFunction[String, ResponseDirective[F]] = mergedRoutes.reduce(_ orElse _)
+
+      val PathMapping = Plan[F]().PathMapping
+
+      val service: HttpRoutes[F] = HttpRoutes.of[F](
+        PathMapping(reducedRoutes)
+      )
+
+      service
+    }
+  }
 
   trait Route[F[_]] {
     def key: List[SimpleLinx]
@@ -14,25 +44,25 @@ object Unsecured {
     def compile: CompilableRoute[F]
   }
 
-  class UnsecuredRoute[F[_]: Monad, PathParams <: HList](route: HLinx[PathParams]) {
-    def producesJson[W](implicit entityEncoder: EntityEncoder[F, W]): UnsecuredRouteW[F, PathParams, W] =
-      new UnsecuredRouteW[F, PathParams, W](
+  class UnsecureRoute[F[_]: Monad, PathParams <: HList](route: HLinx[PathParams]) {
+    def producesJson[W](implicit entityEncoder: EntityEncoder[F, W]): UnsecureRouteW[F, PathParams, W] =
+      new UnsecureRouteW[F, PathParams, W](
         route,
         entityEncoder = entityEncoder
       )
   }
 
-  class UnsecuredRouteW[F[_]: Monad, PathParams <: HList, W](route: HLinx[PathParams],
-                                                             entityEncoder: EntityEncoder[F, W]) {
-    def consumesJson[R](implicit entityDecoder: EntityDecoder[F, R]): UnsecuredRouteRW[F, PathParams, R, W] =
-      new UnsecuredRouteRW[F, PathParams, R, W](
+  class UnsecureRouteW[F[_]: Monad, PathParams <: HList, W](route: HLinx[PathParams],
+                                                            entityEncoder: EntityEncoder[F, W]) {
+    def consumesJson[R](implicit entityDecoder: EntityDecoder[F, R]): UnsecureRouteRW[F, PathParams, R, W] =
+      new UnsecureRouteRW[F, PathParams, R, W](
         route = route,
         entityEncoder = entityEncoder,
         entityDecoder = entityDecoder
       )
 
-    def GET(f: PathParams => Directive[F, W]): UnsecuredGetRoute[F, PathParams] = {
-      UnsecuredGetRoute[F, PathParams](
+    def GET(f: PathParams => Directive[F, W]): UnsecureGetRoute[F, PathParams] = {
+      UnsecureGetRoute[F, PathParams](
         key = route.toSimple.reverse,
         route = route,
         routePf = Util.createPf(route),
@@ -46,9 +76,9 @@ object Unsecured {
     }
   }
 
-  class UnsecuredRouteRW[F[_]: Monad, PathParams <: HList, R, W](route: HLinx[PathParams],
-                                                                 entityEncoder: EntityEncoder[F, W],
-                                                                 entityDecoder: EntityDecoder[F, R]) {
+  class UnsecureRouteRW[F[_]: Monad, PathParams <: HList, R, W](route: HLinx[PathParams],
+                                                                entityEncoder: EntityEncoder[F, W],
+                                                                entityDecoder: EntityDecoder[F, R]) {
     def POST(f: (R, PathParams) => Directive[F, W]): UnsafePostRoute[F, PathParams, R, W] = {
       UnsafePostRoute(
         key = route.toSimple.reverse,
@@ -68,24 +98,24 @@ object Unsecured {
   }
 
   case class UnsafePostRoute[F[_]: Monad, PathParams <: HList, R, W](
-                                                                      key: List[SimpleLinx],
-                                                                      route: HLinx[PathParams],
-                                                                      routePf: PartialFunction[String, Directive[F, PathParams]],
-                                                                      method: Method,
-                                                                      entityDecoder: EntityDecoder[F, R],
-                                                                      f: (R, PathParams) => ResponseDirective[F])
-    extends Route[F]
+      key: List[SimpleLinx],
+      route: HLinx[PathParams],
+      routePf: PartialFunction[String, Directive[F, PathParams]],
+      method: Method,
+      entityDecoder: EntityDecoder[F, R],
+      f: (R, PathParams) => ResponseDirective[F])
+      extends Route[F]
       with RequestDirectives[F] {
 
     override def compile: CompilableRoute[F] = {
       implicit val dec: EntityDecoder[F, R] = entityDecoder
       val fm: Any => ResponseDirective[F] = { (pp) =>
-      {
-        for {
-          in  <- request.bodyAs[F, R]
-          res <- f(in, pp.asInstanceOf[PathParams])
-        } yield { res }
-      }
+        {
+          for {
+            in  <- request.bodyAs[F, R]
+            res <- f(in, pp.asInstanceOf[PathParams])
+          } yield { res }
+        }
       }
 
       CompilableRoute(
@@ -94,7 +124,6 @@ object Unsecured {
       )
     }
   }
-
 
   case class CompilableRoute[F[_]: Monad](pathMatcher: PartialFunction[String, Directive[F, Any]],
                                           methodMap: Map[Method, Any => ResponseDirective[F]]) {
@@ -120,7 +149,7 @@ object Unsecured {
     }
   }
 
-  case class UnsecuredGetRoute[F[_]: Monad, PathParams <: HList](
+  case class UnsecureGetRoute[F[_]: Monad, PathParams <: HList](
       key: List[SimpleLinx],
       route: HLinx[PathParams],
       routePf: PartialFunction[String, Directive[F, PathParams]],
@@ -134,8 +163,6 @@ object Unsecured {
       )
     }
   }
-
-
 
 }
 
