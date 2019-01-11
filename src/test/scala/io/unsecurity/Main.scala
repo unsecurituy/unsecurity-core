@@ -3,6 +3,7 @@ package io.unsecurity
 import cats.effect._
 import io.unsecurity.Test.MyAuthenticatedUser
 import cats.implicits._
+import io.unsecurity.Unsecured.{Route, UnsafeGetRoute, UnsafePostRoute}
 import no.scalabin.http4s.directives.Conditional.ResponseDirective
 import no.scalabin.http4s.directives.Directive
 import org.http4s.{HttpRoutes, Method, Response, Status}
@@ -22,14 +23,14 @@ object Main extends IOApp {
 
   val helloWorld: UnsafeGetRoute[IO, HNil] =
     unsecurity
-      .unsafe(route = Root / "hello")
+      .unsecured(route = Root / "hello")
       .produces[String]
       .GET { _ =>
         Directive.success("Hello world!")
       }
 
   val helloName: UnsafeGetRoute[IO, String ::: HNil] =
-    unsecurity.unsafe(route = Root / "hello" / param[String]("name"))
+    unsecurity.unsecured(route = Root / "hello" / param[String]("name"))
       .produces[String]
       .GET {
         case (name ::: HNil) =>
@@ -37,7 +38,7 @@ object Main extends IOApp {
       }
 
   val postRoute: UnsafePostRoute[IO, String, String, String ::: HNil] =
-    unsecurity.unsafe(route = Root / "hello" / param[String]("name"))
+    unsecurity.unsecured(route = Root / "hello" / param[String]("name"))
       .produces[String]
       .consumes[String]
       .POST { case (body, (name ::: HNil)) => Directive.success(s"hello, ${name}. This is $body") }
