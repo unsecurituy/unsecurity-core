@@ -2,7 +2,7 @@ package io.unsecurity
 
 import cats.Monad
 import cats.effect.IO
-import io.unsecurity.Unsecured.UnsafeRoute
+import io.unsecurity.Unsecured.UnsecuredRoute
 import io.unsecurity.hlinx.HLinx._
 import io.unsecurity.hlinx.QueryParam
 import no.scalabin.http4s.directives.Conditional.ResponseDirective
@@ -10,11 +10,23 @@ import no.scalabin.http4s.directives.{Directive, RequestDirectives, Result}
 import org.http4s.headers.Allow
 import org.http4s.{EntityDecoder, EntityEncoder, Method, Response, Status}
 
+sealed trait MediaType[F[_], T] {
+  def entityEncoder: EntityEncoder[F, T]
+}
+object application {
+  case class json[F[_], T]()(implicit val entityEncoder: EntityEncoder[F, T]) extends MediaType[F, T]
+}
+
+
 class Unsecurity[F[_]: Monad, USER <: AuthenticatedUser[_, _]] {
   def safe: Safe[F, USER] = new Safe[F, USER]()
 
-  def unsecured[PathParams <: HList](route: HLinx[PathParams]): UnsafeRoute[F, PathParams] =
-    new UnsafeRoute[F, PathParams](RouteBuilderData[Nothing, PathParams, Nothing](route))
+  def unsecured[PathParams <: HList, OUT](route: HLinx[PathParams]
+                                         // , produces : MediaType[F, OUT]
+                                         ): UnsecuredRoute[F, PathParams] = {
+
+    new UnsecuredRoute[F, PathParams](route)
+  }
 }
 
 object Unsecurity {
