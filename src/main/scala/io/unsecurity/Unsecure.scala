@@ -197,8 +197,10 @@ object Unsecure {
     }
   }
 
+  type PathMatcher[F[_], A] = PartialFunction[String, Directive[F, A]]
+
   def createPathMatcher[F[_]: Monad, PathParams <: HList](
-      route: HLinx[PathParams]): PartialFunction[String, Directive[F, PathParams]] =
+      route: HLinx[PathParams]): PathMatcher[F, PathParams] =
     new PartialFunction[String, Directive[F, PathParams]] {
       override def isDefinedAt(x: String): Boolean = route.capture(x).isDefined
 

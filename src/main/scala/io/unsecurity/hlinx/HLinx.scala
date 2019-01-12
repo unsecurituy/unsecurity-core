@@ -13,7 +13,7 @@ object HLinx {
   val ::: = HCons
 
   def param[A](name: String)(implicit ppc: PathParamConverter[A])   = Param(name, ppc)
-  def qParam[A](name: String)(implicit qpc: QueryParamConverter[A]) = QueryParam[A](name, qpc)
+  def qParam[A](name: String)(implicit qpc: QueryParamConverter[A]) = QueryParam[A](name)
 
   implicit class QpOps[A](qp: QueryParam[A]) {
     def &[B](other: QueryParam[B]): QueryParam[B] ::: QueryParam[A] ::: HNil =
