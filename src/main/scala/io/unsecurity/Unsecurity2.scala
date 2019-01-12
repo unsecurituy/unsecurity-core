@@ -10,32 +10,22 @@ import no.scalabin.http4s.directives.Conditional.ResponseDirective
 import no.scalabin.http4s.directives.{Directive, RequestDirectives}
 import org.http4s.{EntityDecoder, EntityEncoder, Method}
 
-abstract class Unsecurity2[F[_]: Sync : Applicative] {
+abstract class Unsecurity2[F[_]: Sync: Applicative] {
 
   object Read {
-    case object No extends Read[Unit] {
-      override def entityDecoder: EntityDecoder[F, Unit] = ???
-    }
-    def json[A: Decoder]: Read[A] = new Read[A] {
-      override def entityDecoder: EntityDecoder[F, A] = ???
-    }
-  }
-  sealed trait Read[A] {
-    def entityDecoder: EntityDecoder[F, A]
+    def No: EntityDecoder[F, Unit] =
+      implicitly[EntityDecoder[F, Unit]]
+
+    def json[A: Decoder]: EntityDecoder[F, A] =
+      org.http4s.circe.jsonOf[F, A]
   }
 
   object Write {
-    case object No extends Write[Unit] {
-      override def entityEncoder: EntityEncoder[F, Unit] =
-        ???
-    }
-    def json[A: Encoder]: Write[A] = new Write[A] {
-      override def entityEncoder: EntityEncoder[F, A] =
-        org.http4s.circe.jsonEncoderOf[F, A]
-    }
-  }
-  sealed trait Write[A] {
-    def entityEncoder: EntityEncoder[F, A]
+    def No: EntityEncoder[F, Unit] =
+      implicitly[EntityEncoder[F, Unit]]
+
+    def json[A: Encoder]: EntityEncoder[F, A] =
+      org.http4s.circe.jsonEncoderOf[F, A]
   }
 
   trait Safe[C, W] extends Completable[C, W] {
@@ -56,7 +46,7 @@ abstract class Unsecurity2[F[_]: Sync : Applicative] {
         pathMatcher = Unsecure.createPathMatcher[F, P](endpoint.path).asInstanceOf[PathMatcher[F, Any]],
         methodMap = Map(
           endpoint.method -> { pp: P =>
-            implicit val entityDecoder: EntityDecoder[F, R] = endpoint.read.entityDecoder
+            implicit val entityDecoder: EntityDecoder[F, R] = endpoint.read
             for {
               r <- request.bodyAs[F, R]
             } yield {
@@ -64,7 +54,7 @@ abstract class Unsecurity2[F[_]: Sync : Applicative] {
             }
           }.asInstanceOf[Any => Directive[F, (P, R)]]
         ),
-        entityEncoder = endpoint.write.entityEncoder
+        entityEncoder = endpoint.write
       )
     }
   }
@@ -90,8 +80,7 @@ abstract class Unsecurity2[F[_]: Sync : Applicative] {
     def ||(next: Complete): Complete
   }
 
-  case class MyComplete(pathMatcher: PartialFunction[String, Any],
-                              methodMap: Map[Method, Any => ResponseDirective[F]])
+  case class MyComplete(pathMatcher: PartialFunction[String, Any], methodMap: Map[Method, Any => ResponseDirective[F]])
       extends Complete {
     override def ||(next: Complete): Complete =
       ???
@@ -99,10 +88,10 @@ abstract class Unsecurity2[F[_]: Sync : Applicative] {
 
   case class Endpoint[P <: HLinx.HList, R, W](method: Method,
                                               path: HLinx[P],
-                                              read: Read[R] = Read.No,
-                                              write: Write[W] = Write.No)
+                                              read: EntityDecoder[F, R] = Read.No,
+                                              write: EntityEncoder[F, W] = Write.No)
 
-/*
+  /*
   val auth: Authenticator[IO, String] = ???
 
   import auth._
@@ -124,6 +113,6 @@ abstract class Unsecurity2[F[_]: Sync : Applicative] {
     ))
     .authorization(_ => true)
     .run(_ => Directive.success(42))
-*/
+ */
 
 }
