@@ -18,6 +18,7 @@ libraryDependencies := Seq(
   "io.circe"           %% "circe-parser"        % circeVersion,
   "org.http4s"         %% "http4s-blaze-client" % http4sVersion,
   "org.http4s"         %% "http4s-blaze-server" % http4sVersion,
+  "org.http4s"         %% "http4s-circe"        % http4sVersion,
   "no.scalabin.http4s" %% "http4s-directives"   % directivesVersion,
   "org.scalatest"      %% "scalatest"           % "3.0.5" % Test
 )

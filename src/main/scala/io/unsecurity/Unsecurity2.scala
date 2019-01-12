@@ -1,35 +1,41 @@
 package io.unsecurity
 
 import cats.{Applicative, Monad}
-import cats.effect.IO
+import cats.effect.{IO, Sync}
 import io.circe.{Decoder, Encoder}
 import io.unsecurity.Unsecure.PathMatcher
 import io.unsecurity.hlinx.HLinx
 import io.unsecurity.hlinx.HLinx._
 import no.scalabin.http4s.directives.Conditional.ResponseDirective
-import no.scalabin.http4s.directives.Directive
-import org.http4s.{DecodeResult, EntityDecoder, EntityEncoder, MediaRange, Message, Method}
+import no.scalabin.http4s.directives.{Directive, RequestDirectives}
+import org.http4s.{EntityDecoder, EntityEncoder, Method}
 
 object Unsecurity2 {
 
   object Read {
-    case object No extends Read[Unit]
-    def json[A: Decoder]: Read[A] = ???
+    case object No extends Read[Unit] {
+      override def entityDecoder[F[_]: Sync]: EntityDecoder[F, Unit] = ???
+    }
+    def json[A: Decoder]: Read[A] = new Read[A] {
+      override def entityDecoder[F[_]: Sync]: EntityDecoder[F, A] = ???
+    }
   }
-  sealed trait Read[+A]
+  sealed trait Read[A] {
+    def entityDecoder[F[_]: Sync]: EntityDecoder[F, A]
+  }
 
   object Write {
     case object No extends Write[Unit] {
-      override def entityEncoder[F[_]]: _root_.org.http4s.EntityEncoder[F, Unit] = ???
+      override def entityEncoder[F[_]: Applicative]: EntityEncoder[F, Unit] =
+        ???
     }
     def json[A: Encoder]: Write[A] = new Write[A] {
-      override def entityEncoder[F[_]]: EntityEncoder[F, A] =
-        new EntityEncoder[] {}
-        ???
+      override def entityEncoder[F[_]: Applicative]: EntityEncoder[F, A] =
+        org.http4s.circe.jsonEncoderOf[F, A]
     }
   }
   sealed trait Write[A] {
-    def entityEncoder[F[_]]: EntityEncoder[F, A]
+    def entityEncoder[F[_]: Applicative]: EntityEncoder[F, A]
   }
 
   trait Safe[F[_], C, W] extends Completable[F, C, W] {
@@ -43,24 +49,24 @@ object Unsecurity2 {
       ???
   }
 
-  class UnsecureAuthenticator[F[_]: Monad] extends Authenticator[F, Unit] {
+  class UnsecureAuthenticator[F[_]: Monad: Sync] extends Authenticator[F, Unit] with RequestDirectives[F] {
     override def secure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Safe[F, (P, R, Unit), W] = ???
     override def unsecure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Completable[F, (P, R), W] = {
       MyCompletable[F, (P, R), W](
         pathMatcher = Unsecure.createPathMatcher[F, P](endpoint.path).asInstanceOf[PathMatcher[F, Any]],
         methodMap = Map(
           endpoint.method -> { pp: P =>
+            implicit val entityDecoder: EntityDecoder[F, R] = endpoint.read.entityDecoder[F]
             for {
-              req <- Directive.request
+              r <- request.bodyAs[F, R]
             } yield {
-              (pp, ???): (P, R)
+              (pp, r)
             }
           }.asInstanceOf[Any => Directive[F, (P, R)]]
         ),
-        entityEncoder = ???
+        entityEncoder = endpoint.write.entityEncoder
       )
     }
-
   }
 
   trait Completable[F[_], C, W] {
@@ -73,7 +79,10 @@ object Unsecurity2 {
       methodMap: Map[Method, Any => Directive[F, C]],
       entityEncoder: EntityEncoder[F, W]
   ) extends Completable[F, C, W] {
-    override def run(f: C => Directive[F, W]): Complete[F]         = ???
+    override def run(f: C => Directive[F, W]): Complete[F] = {
+
+      ???
+    }
     override def resolve[C2](f: C => F[C2]): Completable[F, C2, W] = ???
   }
 
