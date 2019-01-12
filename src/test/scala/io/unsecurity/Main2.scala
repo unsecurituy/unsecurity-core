@@ -1,7 +1,5 @@
 package io.unsecurity
 import cats.effect.{ExitCode, IO, IOApp}
-import io.unsecurity.Unsecurity2._
-import io.unsecurity.hlinx.HLinx
 import io.unsecurity.hlinx.HLinx.Root
 import no.scalabin.http4s.directives.Directive
 import org.http4s.Method
@@ -9,18 +7,21 @@ import org.http4s.Method
 import scala.concurrent.ExecutionContext.Implicits.global
 
 object Main2 extends IOApp {
-  import Unsecurity2._
+  val unsecurity2: Unsecurity2[IO] = new Unsecurity2[IO] {}
+  import unsecurity2._
 
   val server: Server[IO] = Server[IO](
     port = 8088,
     host = "0.0.0.0"
   )
 
-  val auth = new UnsecureAuthenticator[IO]
+
+
+  val auth = new unsecurity2.UnsecureAuthenticator
 
   import auth._
 
-  val helloWorld: Unsecurity2.Complete[IO] =
+  val helloWorld =
     unsecure(
       Endpoint(
         method = Method.GET,
