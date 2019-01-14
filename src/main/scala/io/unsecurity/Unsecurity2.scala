@@ -8,9 +8,17 @@ import no.scalabin.http4s.directives.Conditional.ResponseDirective
 import no.scalabin.http4s.directives.Directive
 import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Method, Response}
 
-abstract class Unsecurity2[F[_]: Sync] {
+abstract class Unsecurity2[F[_]: Sync, A] {
 
   def toHttpRoutes(endpoints: List[Complete]): HttpRoutes[F]
+
+  case class Endpoint[P <: HLinx.HList, R, W](method: Method,
+                                              path: HLinx[P],
+                                              read: EntityDecoder[F, R] = Read.Nothing,
+                                              write: EntityEncoder[F, W] = Write.Nothing)
+
+  def secure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Secured[(P, R, A), W]
+  def unsecure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Completable[(P, R), W]
 
   object Read {
     def Nothing: EntityDecoder[F, Unit] =
@@ -39,17 +47,10 @@ abstract class Unsecurity2[F[_]: Sync] {
     override def resolve[C2](f: C => F[C2]): Secured[C2, W]
   }
 
-  trait Authenticator[A] {
-    def secure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Secured[(P, R, A), W]
-    def unsecure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Completable[(P, R), W]
-  }
-
-
   trait Completable[C, W] {
     def run(f: C => Directive[F, W]): Complete
     def resolve[C2](f: C => F[C2]): Completable[C2, W]
   }
-
 
   trait Complete {
     def key: List[SimpleLinx]
@@ -57,39 +58,6 @@ abstract class Unsecurity2[F[_]: Sync] {
     def methodMap: Map[Method, Any => ResponseDirective[F]]
     def compile: PathMatcher[F, Response[F]]
 
-    def ||(next: Complete): Complete
   }
 
-
-  case class Endpoint[P <: HLinx.HList, R, W](method: Method,
-                                              path: HLinx[P],
-                                              read: EntityDecoder[F, R] = Read.Nothing,
-                                              write: EntityEncoder[F, W] = Write.Nothing)
-
-
-    /*
-    val auth: Authenticator[IO, String] = ???
-
-    import auth._
-
-    val aRoute =
-      unsecure(
-        Endpoint(
-          method = Method.POST,
-          path = Root / "a"
-        )
-      )
-
-    val bRoute = secure(
-      Endpoint(
-        method = Method.GET,
-        path = Root / "b" / param[Int]("b"),
-        read = Read.json[String],
-        write = Write.json[Int]
-      ))
-      .authorization(_ => true)
-      .run(_ => Directive.success(42))
-   */
-
 }
-

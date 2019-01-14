@@ -7,27 +7,25 @@ import no.scalabin.http4s.directives.{Directive, Plan}
 import org.http4s.headers.Allow
 import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Method, Response, Status}
 
-class MyUnsecurity2[F[_]: Sync] extends Unsecurity2[F] with UnsecurityOps[F] {
+class MyUnsecurity2[F[_]: Sync, A] extends Unsecurity2[F, A] with UnsecurityOps[F] {
 
-  class UnsecureAuthenticator extends Authenticator[Unit] {
-    override def secure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Secured[(P, R, Unit), W] = ???
-    override def unsecure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Completable[(P, R), W] = {
-      MyCompletable[(P, R), W](
-        key = endpoint.path.toSimple.reverse,
-        pathMatcher = createPathMatcher[F, P](endpoint.path).asInstanceOf[PathMatcher[F, Any]],
-        methodMap = Map(
-          endpoint.method -> { pp: P =>
-            implicit val entityDecoder: EntityDecoder[F, R] = endpoint.read
-            for {
-              r <- request.bodyAs[F, R]
-            } yield {
-              (pp, r)
-            }
-          }.asInstanceOf[Any => Directive[F, (P, R)]]
-        ),
-        entityEncoder = endpoint.write
-      )
-    }
+  override def secure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Secured[(P, R, A), W] = ???
+  override def unsecure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Completable[(P, R), W] = {
+    MyCompletable[(P, R), W](
+      key = endpoint.path.toSimple.reverse,
+      pathMatcher = createPathMatcher[F, P](endpoint.path).asInstanceOf[PathMatcher[F, Any]],
+      methodMap = Map(
+        endpoint.method -> { pp: P =>
+          implicit val entityDecoder: EntityDecoder[F, R] = endpoint.read
+          for {
+            r <- request.bodyAs[F, R]
+          } yield {
+            (pp, r)
+          }
+        }.asInstanceOf[Any => Directive[F, (P, R)]]
+      ),
+      entityEncoder = endpoint.write
+    )
   }
 
   case class MyCompletable[C, W](
@@ -62,7 +60,6 @@ class MyUnsecurity2[F[_]: Sync] extends Unsecurity2[F] with UnsecurityOps[F] {
       pathMatcher: PathMatcher[F, Any],
       methodMap: Map[Method, Any => ResponseDirective[F]]
   ) extends Complete {
-    override def ||(next: Complete): Complete = ???
     override def merge(other: Complete): Complete = {
       this.copy(
         methodMap = this.methodMap ++ other.methodMap

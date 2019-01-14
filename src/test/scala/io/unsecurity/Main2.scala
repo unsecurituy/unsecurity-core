@@ -8,7 +8,7 @@ import org.http4s.Method
 import scala.concurrent.ExecutionContext.Implicits.global
 
 object Main2 extends IOApp {
-  val unsecurity2: MyUnsecurity2[IO] = new MyUnsecurity2[IO] {}
+  val unsecurity2: MyUnsecurity2[IO, String] = new MyUnsecurity2[IO, String] {}
   import unsecurity2._
 
   val server: Server[IO] = Server[IO](
@@ -16,9 +16,6 @@ object Main2 extends IOApp {
     host = "0.0.0.0"
   )
 
-  val auth = new unsecurity2.UnsecureAuthenticator
-
-  import auth._
 
   val helloWorld: unsecurity2.Complete =
     unsecure(

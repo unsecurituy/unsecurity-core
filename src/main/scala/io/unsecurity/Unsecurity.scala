@@ -15,6 +15,15 @@ object application {
   case class json[F[_], T]()(implicit val entityEncoder: EntityEncoder[F, T]) extends MediaType[F, T]
 }
 
+trait AuthenticatedUser[ID, PROFILE] {
+  def id: ID
+  def profile: PROFILE
+}
+
+object Unsecurity {
+  def apply[F[_]: Monad, USER <: AuthenticatedUser[_, _]]: Unsecurity[F, USER] = new Unsecurity()
+}
+
 class Unsecurity[F[_]: Monad, USER <: AuthenticatedUser[_, _]] {
   def safe: Safe[F, USER] = new Safe[F, USER]()
 
@@ -24,15 +33,7 @@ class Unsecurity[F[_]: Monad, USER <: AuthenticatedUser[_, _]] {
   }
 }
 
-object Unsecurity {
-  def apply[F[_]: Monad, USER <: AuthenticatedUser[_, _]]: Unsecurity[F, USER] = new Unsecurity()
-}
 
-trait AuthenticatedUser[ID, PROFILE] {
-  def id: ID
-
-  def profile: PROFILE
-}
 
 object PathParams {
   def unapply[B <: HList](arg: B): Option[B] = None
@@ -42,25 +43,23 @@ class AlwaysAllow[USER <: AuthenticatedUser[_, _]] extends SecurityPredicate[USE
 
 class AlwaysDeny[USER <: AuthenticatedUser[_, _]] extends SecurityPredicate[USER](_ => false)
 
-case class CompleteRoute[F[_], USER <: AuthenticatedUser[_, _], IN, OUT, PathParams <: HList](
-    route: HLinx[PathParams],
-    method: Method,
-    queryParams: HList,
-    authorization: (IN, PathParams) => SecurityPredicate[USER],
-    f: (USER, IN, PathParams) => Directive[F, OUT])
+case class CompleteRoute[F[_], USER <: AuthenticatedUser[_, _], IN, OUT, PathParams <: HList](route: HLinx[PathParams],
+                                                                                              method: Method,
+                                                                                              queryParams: HList,
+                                                                                              authorization: (IN, PathParams) => SecurityPredicate[USER],
+                                                                                              f: (USER, IN, PathParams) => Directive[F, OUT])
 
-private case class RouteBuilderData[IN, PathParams <: HList, USER <: AuthenticatedUser[_, _]](
-    route: HLinx[PathParams],
-    queryParams: HList = HNil,
-    authorization: (IN, PathParams) => SecurityPredicate[USER] = (_: IN, _: PathParams) => new AlwaysDeny[USER])
+private case class RouteBuilderData[IN, PathParams <: HList, USER <: AuthenticatedUser[_, _]](route: HLinx[PathParams],
+                                                                                              queryParams: HList = HNil,
+                                                                                              authorization: (IN, PathParams) => SecurityPredicate[USER] =
+                                                                                                (_: IN, _: PathParams) => new AlwaysDeny[USER])
 
 class Safe[F[_], USER <: AuthenticatedUser[_, _]] {
   def route[PathParams <: HList](path: HLinx[PathParams]): SafeRoute[F, USER, PathParams] =
     new SafeRoute[F, USER, PathParams](RouteBuilderData[Nothing, PathParams, USER](path))
 }
 
-class SafeRoute[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList](
-    data: RouteBuilderData[_, PathParams, USER]) {
+class SafeRoute[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList](data: RouteBuilderData[_, PathParams, USER]) {
   def queryParams[A](param: QueryParam[A]): SafeRoute[F, USER, PathParams] = queryParams(param ::: HNil)
 
   def queryParams[A <: HList](params: A): SafeRoute[F, USER, PathParams] =
@@ -74,14 +73,12 @@ class SafeRoute[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList](
   //new SafeRouteWithOut[F, USER, PathParams, OUT](data.copy(produces = mediaType.toList))
 }
 
-class SafeRouteWithIn[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, IN](
-    data: RouteBuilderData[IN, PathParams, USER]) {
+class SafeRouteWithIn[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, IN](data: RouteBuilderData[IN, PathParams, USER]) {
   def produces[OUT]: SafeRouteWithInAndOut[F, USER, PathParams, IN, OUT] =
     new SafeRouteWithInAndOut[F, USER, PathParams, IN, OUT](data)
 }
 
-class SafeRouteWithOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, OUT](
-    data: RouteBuilderData[Nothing, PathParams, USER]) {
+class SafeRouteWithOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, OUT](data: RouteBuilderData[Nothing, PathParams, USER]) {
   def consumes[IN]: SafeRouteWithInAndOut[F, USER, PathParams, IN, OUT] = ???
 
   //new SafeRouteWithInAndOut[F, USER, PathParams, IN, OUT](data.copy(produces = mediaType.toList))
@@ -90,16 +87,14 @@ class SafeRouteWithOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HLis
   // new CompletableSafeRouteWithOut[F, USER, PathParams, OUT](data.copy(authorization = authRule))
 }
 
-class SafeRouteWithInAndOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, IN, OUT](
-    data: RouteBuilderData[IN, PathParams, USER]) {
-  def authorization[A <: AuthenticatedUser[_, _]](authRule: (IN, PathParams) => SecurityPredicate[A])
-    : CompletableSafeRouteWithInAndOut[F, USER, PathParams, IN, OUT] = ???
+class SafeRouteWithInAndOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, IN, OUT](data: RouteBuilderData[IN, PathParams, USER]) {
+  def authorization[A <: AuthenticatedUser[_, _]](
+      authRule: (IN, PathParams) => SecurityPredicate[A]): CompletableSafeRouteWithInAndOut[F, USER, PathParams, IN, OUT] = ???
 
   //new CompletableSafeRouteWithInAndOut[F, USER, IN, OUT, PathParams](data.copy(authorization = authRule))
 }
 
-class CompletableSafeRouteWithOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, OUT](
-    data: RouteBuilderData[Nothing, PathParams, USER]) {
+class CompletableSafeRouteWithOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, OUT](data: RouteBuilderData[Nothing, PathParams, USER]) {
   def GET(f: (USER, PathParams) => Directive[F, OUT]): CompleteRoute[F, USER, Nothing, OUT, PathParams] =
     new CompleteRoute[F, USER, Nothing, OUT, PathParams](
       route = data.route,
@@ -110,8 +105,7 @@ class CompletableSafeRouteWithOut[F[_], USER <: AuthenticatedUser[_, _], PathPar
     )
 }
 
-class CompletableSafeRouteWithInAndOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, IN, OUT](
-    data: RouteBuilderData[IN, PathParams, USER]) {
+class CompletableSafeRouteWithInAndOut[F[_], USER <: AuthenticatedUser[_, _], PathParams <: HList, IN, OUT](data: RouteBuilderData[IN, PathParams, USER]) {
   def POST(f: (USER, IN, PathParams) => Directive[F, OUT]): CompleteRoute[F, USER, IN, OUT, PathParams] =
     new CompleteRoute[F, USER, IN, OUT, PathParams](route = data.route,
                                                     method = Method.POST,
@@ -140,14 +134,11 @@ object Test {
     override def profile: MyProfile = MyProfile("Kaare Nilsen", Set("admin"), Set("myFeature"))
   }
 
-  case class HasRole(role: String)
-      extends SecurityPredicate[MyAuthenticatedUser](userProfile => userProfile.profile.roles.contains(role))
+  case class HasRole(role: String) extends SecurityPredicate[MyAuthenticatedUser](userProfile => userProfile.profile.roles.contains(role))
 
-  case class HasAccessToFeature(feature: String)
-      extends SecurityPredicate[MyAuthenticatedUser](userProfile => userProfile.profile.roles.contains(feature))
+  case class HasAccessToFeature(feature: String) extends SecurityPredicate[MyAuthenticatedUser](userProfile => userProfile.profile.roles.contains(feature))
 
-  case class BodyContains(content: String, myRequest: MyRequest)
-      extends SecurityPredicate[MyAuthenticatedUser](userProfile => myRequest.in.contains(content))
+  case class BodyContains(content: String, myRequest: MyRequest) extends SecurityPredicate[MyAuthenticatedUser](userProfile => myRequest.in.contains(content))
 
   case class MyResponse(result: String)
 
@@ -160,8 +151,7 @@ object Test {
       .route(Root / "aRequest" / param[Int]("intParam") / param[String]("stringParam"))
       .consumes[MyRequest] //application.json by magic somehow makes sure there is an decoder
       .produces[MyResponse] //application.json by magic somehow makes sure there is an encoder
-      .authorization((myRequest, pathParams) =>
-        HasRole("admin") || HasAccessToFeature("myFeature") && BodyContains("kaare", myRequest))
+      .authorization((myRequest, pathParams) => HasRole("admin") || HasAccessToFeature("myFeature") && BodyContains("kaare", myRequest))
       .POST {
         case (user, myRequest, intParam ::: stringParam ::: HNil) =>
           Directive.success(MyResponse(s"Hello ${user.profile.name}, you requested ${myRequest.in}"))
