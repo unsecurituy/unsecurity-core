@@ -36,11 +36,10 @@ object Main2 extends IOApp {
   def toHttpRoutes(endpoints: List[Complete]): HttpRoutes[IO] = {
     val linxesToList: Map[List[SimpleLinx], List[Complete]] = endpoints.groupBy(_.key)
 
-    val mergedRoutes: List[unsecurity2.Complete] = for {
-      (_, groupedEndpoints) <- linxesToList.toList
-    } yield {
-      groupedEndpoints.reduce(_ merge _)
-    }
+    val mergedRoutes: List[unsecurity2.Complete] =
+      linxesToList.toList.map {
+        case (_, groupedEndpoints) => groupedEndpoints.reduce(_ merge _)
+      }
 
     val compiledRoutes : List[PathMatcher[IO, Response[IO]]] =
       mergedRoutes.map(_.compile)

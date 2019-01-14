@@ -3,7 +3,7 @@ package io.unsecurity
 import cats.Applicative
 import cats.effect.Sync
 import io.circe.{Decoder, Encoder}
-import io.unsecurity.Unsecure.{CompilableEndpoint, PathMatcher}
+import io.unsecurity.Unsecure.PathMatcher
 import io.unsecurity.hlinx.HLinx
 import io.unsecurity.hlinx.HLinx._
 import no.scalabin.http4s.directives.Conditional.ResponseDirective
@@ -14,7 +14,7 @@ import org.http4s.{EntityDecoder, EntityEncoder, Method, Response, Status}
 abstract class Unsecurity2[F[_]: Sync: Applicative] {
 
   object Read {
-    def No: EntityDecoder[F, Unit] =
+    def Nothing: EntityDecoder[F, Unit] =
       implicitly[EntityDecoder[F, Unit]]
 
     def json[A: Decoder]: EntityDecoder[F, A] =
@@ -22,7 +22,7 @@ abstract class Unsecurity2[F[_]: Sync: Applicative] {
   }
 
   object Write {
-    def No: EntityEncoder[F, Unit] =
+    def Nothing: EntityEncoder[F, Unit] =
       implicitly[EntityEncoder[F, Unit]]
 
     def json[A: Encoder]: EntityEncoder[F, A] =
@@ -76,7 +76,7 @@ abstract class Unsecurity2[F[_]: Sync: Applicative] {
       MyComplete(
         key = key,
         pathMatcher = pathMatcher,
-        methodMap = methodMap.mapValues { (a2dc: Any => Directive[F, C]) =>
+        methodMap = methodMap.mapValues { a2dc: (Any => Directive[F, C]) =>
           a2dc.andThen { dc =>
             for {
               c <- dc
@@ -130,8 +130,8 @@ abstract class Unsecurity2[F[_]: Sync: Applicative] {
 
   case class Endpoint[P <: HLinx.HList, R, W](method: Method,
                                               path: HLinx[P],
-                                              read: EntityDecoder[F, R] = Read.No,
-                                              write: EntityEncoder[F, W] = Write.No)
+                                              read: EntityDecoder[F, R] = Read.Nothing,
+                                              write: EntityEncoder[F, W] = Write.Nothing)
 
   /*
   val auth: Authenticator[IO, String] = ???
