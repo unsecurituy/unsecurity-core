@@ -3,7 +3,6 @@ package io.unsecurity
 import cats.Applicative
 import cats.effect.Sync
 import io.circe.{Decoder, Encoder}
-import io.unsecurity.Unsecure.PathMatcher
 import io.unsecurity.hlinx.HLinx
 import io.unsecurity.hlinx.HLinx._
 import no.scalabin.http4s.directives.Conditional.ResponseDirective

@@ -196,28 +196,4 @@ object Unsecure {
       )
     }
   }
-
-  type PathMatcher[F[_], A] = PartialFunction[String, Directive[F, A]]
-
-  def createPathMatcher[F[_]: Monad, PathParams <: HList](
-      route: HLinx[PathParams]): PathMatcher[F, PathParams] =
-    new PartialFunction[String, Directive[F, PathParams]] {
-      override def isDefinedAt(x: String): Boolean = route.capture(x).isDefined
-
-      override def apply(v1: String): Directive[F, PathParams] = {
-        val value: Either[String, PathParams] = route.capture(v1).get
-
-        value match {
-          case Left(errorMsg) =>
-            Directive.error(
-              Response(Status.BadRequest)
-                .withEntity(errorMsg)
-            )
-
-          case Right(params) =>
-            Directive.success(params)
-
-        }
-      }
-    }
 }

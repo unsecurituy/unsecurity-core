@@ -1,7 +1,6 @@
 package io.unsecurity
 
 import cats.effect.Sync
-import io.unsecurity.Unsecure.PathMatcher
 import io.unsecurity.hlinx.HLinx.{HList, SimpleLinx}
 import no.scalabin.http4s.directives.Conditional.ResponseDirective
 import no.scalabin.http4s.directives.{Directive, Plan, RequestDirectives}
@@ -17,7 +16,7 @@ class MyUnsecurity2[F[_] : Sync] extends Unsecurity2[F] {
     override def unsecure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Completable[(P, R), W] = {
       MyCompletable[(P, R), W](
         key = endpoint.path.toSimple.reverse,
-        pathMatcher = Unsecure.createPathMatcher[F, P](endpoint.path).asInstanceOf[PathMatcher[F, Any]],
+        pathMatcher = createPathMatcher[F, P](endpoint.path).asInstanceOf[PathMatcher[F, Any]],
         methodMap = Map(
           endpoint.method -> { pp: P =>
             implicit val entityDecoder: EntityDecoder[F, R] = endpoint.read
