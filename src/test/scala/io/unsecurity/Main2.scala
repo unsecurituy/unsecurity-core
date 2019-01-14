@@ -1,16 +1,14 @@
 package io.unsecurity
 import cats.effect.{ExitCode, IO, IOApp}
-import io.unsecurity.Main2.unsecurity2
-import io.unsecurity.Unsecure.{Endpoint, PathMatcher}
+import io.unsecurity.Unsecure.PathMatcher
 import io.unsecurity.hlinx.HLinx.{Root, SimpleLinx}
-import no.scalabin.http4s.directives.Conditional.ResponseDirective
 import no.scalabin.http4s.directives.{Directive, Plan}
 import org.http4s.{HttpRoutes, Method, Response}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
 object Main2 extends IOApp {
-  val unsecurity2: Unsecurity2[IO] = new Unsecurity2[IO] {}
+  val unsecurity2: MyUnsecurity2[IO] = new MyUnsecurity2[IO] {}
   import unsecurity2._
 
   val server: Server[IO] = Server[IO](
@@ -58,11 +56,6 @@ object Main2 extends IOApp {
 
   override def run(args: List[String]): IO[ExitCode] = {
     import cats.implicits._
-
-    // mål: serve en enkelt rute
-    // sjekke:
-    // - not found
-    // - method not allowed
 
     val httpRoutes = toHttpRoutes(List(helloWorld))
 

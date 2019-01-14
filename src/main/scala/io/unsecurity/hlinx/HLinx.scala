@@ -27,6 +27,9 @@ object HLinx {
 
   def splitPath(path: String): List[String] = path.split("/").toList.filter(_.nonEmpty)
 
+  // TODO move overlaps functionality into this
+  // TODO good error messages when overlapping
+  // TODO wrapper class instead of List
   sealed trait SimpleLinx
   case class SimpleStatic(s: String) extends SimpleLinx
   case object SimplePathParam        extends SimpleLinx
@@ -39,6 +42,7 @@ object HLinx {
         }
     }
     def /[H](h: Param[H])                             = Variable(this, h.converter, h.name)
+    // TODO reverse path params on capture
     def capture(s: String): Option[Either[String, T]] = extract(splitPath(s).reverse)
     def extract(s: List[String]): Option[Either[String, T]]
     def overlaps[O <: HList](other: HLinx[O]): Boolean
