@@ -1,5 +1,6 @@
 package io.unsecurity
-import cats.effect.{IO, Sync}
+
+import cats.effect.Sync
 import io.unsecurity.Unsecure.PathMatcher
 import io.unsecurity.hlinx.HLinx.{HList, SimpleLinx}
 import no.scalabin.http4s.directives.Conditional.ResponseDirective

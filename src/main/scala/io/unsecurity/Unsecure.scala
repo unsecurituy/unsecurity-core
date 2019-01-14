@@ -25,10 +25,10 @@ object Unsecure {
 
     def toHttpRoutes: HttpRoutes[F] = {
       val linxesToList: Map[List[SimpleLinx], List[Endpoint[F]]] = rs.groupBy(_.key)
-      val mergedRoutes: List[PartialFunction[String, ResponseDirective[F]]] =
+      val mergedRoutes: List[PathMatcher[F, Response[F]]] =
         linxesToList.mapValues(rs => rs.map(_.compile).reduce(_ merge _)).values.toList.map(_.compile)
 
-      val reducedRoutes: PartialFunction[String, ResponseDirective[F]] = mergedRoutes.reduce(_ orElse _)
+      val reducedRoutes: PathMatcher[F, Response[F]] = mergedRoutes.reduce(_ orElse _)
 
       val PathMapping = Plan[F]().PathMapping
 
@@ -133,7 +133,7 @@ object Unsecure {
   case class UnsecurePostEndpointRW[F[_]: Monad, PathParams <: HList, R, W](
       key: List[SimpleLinx],
       path: HLinx[PathParams],
-      pathMatcher: PartialFunction[String, Directive[F, PathParams]],
+      pathMatcher: PathMatcher[F, PathParams],
       method: Method,
       entityDecoder: EntityDecoder[F, R],
       f: (R, PathParams) => ResponseDirective[F])
@@ -152,13 +152,13 @@ object Unsecure {
       }
 
       CompilableEndpoint(
-        pathMatcher = pathMatcher.asInstanceOf[PartialFunction[String, Directive[F, Any]]],
+        pathMatcher = pathMatcher.asInstanceOf[PathMatcher[F, Any]],
         methodMap = Map(method -> fm)
       )
     }
   }
 
-  case class CompilableEndpoint[F[_]: Monad](pathMatcher: PartialFunction[String, Directive[F, Any]],
+  case class CompilableEndpoint[F[_]: Monad](pathMatcher: PathMatcher[F, Any],
                                              methodMap: Map[Method, Any => ResponseDirective[F]]) {
     def merge(other: CompilableEndpoint[F]): CompilableEndpoint[F] = {
       this.copy(
@@ -185,13 +185,13 @@ object Unsecure {
   case class UnsecureGetEndpoint[F[_]: Monad, PathParams <: HList](
       key: List[SimpleLinx],
       path: HLinx[PathParams],
-      pathMatcher: PartialFunction[String, Directive[F, PathParams]],
+      pathMatcher: PathMatcher[F, PathParams],
       method: Method,
       f: PathParams => ResponseDirective[F])
       extends EndpointWithPath[F, PathParams] {
     override def compile: CompilableEndpoint[F] = {
       CompilableEndpoint(
-        pathMatcher = pathMatcher.asInstanceOf[PartialFunction[String, Directive[F, Any]]],
+        pathMatcher = pathMatcher.asInstanceOf[PathMatcher[F, Any]],
         methodMap = Map(method -> f.asInstanceOf[Any => ResponseDirective[F]])
       )
     }

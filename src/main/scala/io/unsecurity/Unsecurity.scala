@@ -5,10 +5,8 @@ import cats.effect.IO
 import io.unsecurity.Unsecure.{QueryParams, UnsecureEndpoint}
 import io.unsecurity.hlinx.HLinx._
 import io.unsecurity.hlinx.QueryParam
-import no.scalabin.http4s.directives.Conditional.ResponseDirective
-import no.scalabin.http4s.directives.{Directive, RequestDirectives, Result}
-import org.http4s.headers.Allow
-import org.http4s.{EntityDecoder, EntityEncoder, Method, Response, Status}
+import no.scalabin.http4s.directives.Directive
+import org.http4s.{EntityEncoder, Method}
 
 sealed trait MediaType[F[_], T] {
   def entityEncoder: EntityEncoder[F, T]

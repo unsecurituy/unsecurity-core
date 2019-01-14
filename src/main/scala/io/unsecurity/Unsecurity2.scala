@@ -1,7 +1,7 @@
 package io.unsecurity
 
 import cats.Applicative
-import cats.effect.{IO, Sync}
+import cats.effect.Sync
 import io.circe.{Decoder, Encoder}
 import io.unsecurity.Unsecure.PathMatcher
 import io.unsecurity.hlinx.HLinx

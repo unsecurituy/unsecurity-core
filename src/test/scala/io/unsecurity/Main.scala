@@ -2,10 +2,9 @@ package io.unsecurity
 
 import cats.effect._
 import io.unsecurity.Test.MyAuthenticatedUser
-import io.unsecurity.Unsecure.{Endpoint, Endpoints, UnsecureGetEndpoint, UnsecurePostEndpointRW}
-import no.scalabin.http4s.directives.Conditional.ResponseDirective
-import no.scalabin.http4s.directives.Directive
+import io.unsecurity.Unsecure.{Endpoints, UnsecureGetEndpoint, UnsecurePostEndpointRW}
 import io.unsecurity.hlinx.HLinx._
+import no.scalabin.http4s.directives.Directive
 
 import scala.concurrent.ExecutionContext.Implicits.global
 
