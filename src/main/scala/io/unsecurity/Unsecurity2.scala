@@ -1,6 +1,5 @@
 package io.unsecurity
 
-import cats.Applicative
 import cats.effect.Sync
 import io.circe.{Decoder, Encoder}
 import io.unsecurity.hlinx.HLinx
@@ -9,7 +8,7 @@ import no.scalabin.http4s.directives.Conditional.ResponseDirective
 import no.scalabin.http4s.directives.Directive
 import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Method, Response}
 
-abstract class Unsecurity2[F[_]: Sync: Applicative] {
+abstract class Unsecurity2[F[_]: Sync] {
 
   def toHttpRoutes(endpoints: List[Complete]): HttpRoutes[F]
 

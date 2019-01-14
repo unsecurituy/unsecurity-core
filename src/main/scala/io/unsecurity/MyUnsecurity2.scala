@@ -3,15 +3,13 @@ package io.unsecurity
 import cats.effect.Sync
 import io.unsecurity.hlinx.HLinx.{HList, SimpleLinx}
 import no.scalabin.http4s.directives.Conditional.ResponseDirective
-import no.scalabin.http4s.directives.{Directive, Plan, RequestDirectives}
+import no.scalabin.http4s.directives.{Directive, Plan}
 import org.http4s.headers.Allow
 import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Method, Response, Status}
 
-class MyUnsecurity2[F[_] : Sync] extends Unsecurity2[F] {
+class MyUnsecurity2[F[_]: Sync] extends Unsecurity2[F] with UnsecurityOps[F] {
 
-  class UnsecureAuthenticator extends Authenticator[Unit]
-    // TODO blit kvitt denne (brukes kun av request.bodyAs)
-    with RequestDirectives[F] {
+  class UnsecureAuthenticator extends Authenticator[Unit] {
     override def secure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Secured[(P, R, Unit), W] = ???
     override def unsecure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Completable[(P, R), W] = {
       MyCompletable[(P, R), W](
@@ -33,11 +31,11 @@ class MyUnsecurity2[F[_] : Sync] extends Unsecurity2[F] {
   }
 
   case class MyCompletable[C, W](
-                                  key: List[SimpleLinx],
-                                  pathMatcher: PathMatcher[F, Any],
-                                  methodMap: Map[Method, Any => Directive[F, C]],
-                                  entityEncoder: EntityEncoder[F, W]
-                                ) extends Completable[C, W] {
+      key: List[SimpleLinx],
+      pathMatcher: PathMatcher[F, Any],
+      methodMap: Map[Method, Any => Directive[F, C]],
+      entityEncoder: EntityEncoder[F, W]
+  ) extends Completable[C, W] {
     override def run(f: C => Directive[F, W]): Complete = {
       MyComplete(
         key = key,
@@ -60,10 +58,10 @@ class MyUnsecurity2[F[_] : Sync] extends Unsecurity2[F] {
   }
 
   case class MyComplete(
-                         key: List[SimpleLinx],
-                         pathMatcher: PathMatcher[F, Any],
-                         methodMap: Map[Method, Any => ResponseDirective[F]]
-                       ) extends Complete {
+      key: List[SimpleLinx],
+      pathMatcher: PathMatcher[F, Any],
+      methodMap: Map[Method, Any => ResponseDirective[F]]
+  ) extends Complete {
     override def ||(next: Complete): Complete = ???
     override def merge(other: Complete): Complete = {
       this.copy(
@@ -78,7 +76,7 @@ class MyUnsecurity2[F[_] : Sync] extends Unsecurity2[F] {
           req        <- Directive.request
           pathParams <- pathParamsDir
           res <- if (methodMap.isDefinedAt(req.method)) methodMap(req.method)(pathParams)
-          else Directive.error(Response[F](Status.MethodNotAllowed).putHeaders(allow(methodMap.keySet.toList)))
+                else Directive.error(Response[F](Status.MethodNotAllowed).putHeaders(allow(methodMap.keySet.toList)))
         } yield {
           res
         }
@@ -94,9 +92,8 @@ class MyUnsecurity2[F[_] : Sync] extends Unsecurity2[F] {
         case (_, groupedEndpoints) => groupedEndpoints.reduce(_ merge _)
       }
 
-    val compiledRoutes : List[PathMatcher[F, Response[F]]] =
+    val compiledRoutes: List[PathMatcher[F, Response[F]]] =
       mergedRoutes.map(_.compile)
-
 
     val reducedRoutes: PathMatcher[F, Response[F]] = compiledRoutes.reduce(_ orElse _)
 
