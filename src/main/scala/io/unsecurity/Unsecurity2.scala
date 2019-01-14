@@ -3,9 +3,9 @@ package io.unsecurity
 import cats.effect.Sync
 import io.unsecurity.hlinx.HLinx.{HList, SimpleLinx}
 import no.scalabin.http4s.directives.Conditional.ResponseDirective
-import no.scalabin.http4s.directives.{Directive, Plan}
+import no.scalabin.http4s.directives.Directive
 import org.http4s.headers.Allow
-import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Method, Response, Status}
+import org.http4s.{EntityDecoder, EntityEncoder, Method, Response, Status}
 
 class Unsecurity2[F[_]: Sync, U] extends AbstractUnsecurity2[F, U] with UnsecurityOps[F] {
 
@@ -38,16 +38,18 @@ class Unsecurity2[F[_]: Sync, U] extends AbstractUnsecurity2[F, U] with Unsecuri
       MyComplete(
         key = key,
         pathMatcher = pathMatcher,
-        methodMap = methodMap.mapValues { a2dc: (Any => Directive[F, C]) =>
-          a2dc.andThen { dc =>
-            for {
-              c <- dc
-              w <- f(c)
-            } yield {
-              Response[F]()
-                .withEntity(w)(entityEncoder)
+        methodMap = methodMap.mapValues {
+          //noinspection ScalaUnnecessaryParentheses
+          a2dc: (Any => Directive[F, C]) =>
+            a2dc.andThen { dc =>
+              for {
+                c <- dc
+                w <- f(c)
+              } yield {
+                Response[F]()
+                  .withEntity(w)(entityEncoder)
+              }
             }
-          }
         }
       )
     }
@@ -80,27 +82,4 @@ class Unsecurity2[F[_]: Sync, U] extends AbstractUnsecurity2[F, U] with Unsecuri
       }
     }
   }
-
-  override def toHttpRoutes(endpoints: List[Complete]): HttpRoutes[F] = {
-    val linxesToList: Map[List[SimpleLinx], List[Complete]] = endpoints.groupBy(_.key)
-
-    val mergedRoutes: List[Complete] =
-      linxesToList.toList.map {
-        case (_, groupedEndpoints) => groupedEndpoints.reduce(_ merge _)
-      }
-
-    val compiledRoutes: List[PathMatcher[F, Response[F]]] =
-      mergedRoutes.map(_.compile)
-
-    val reducedRoutes: PathMatcher[F, Response[F]] = compiledRoutes.reduce(_ orElse _)
-
-    val PathMapping = Plan[F]().PathMapping
-
-    val service: HttpRoutes[F] = HttpRoutes.of[F](
-      PathMapping(reducedRoutes)
-    )
-
-    service
-  }
-
 }

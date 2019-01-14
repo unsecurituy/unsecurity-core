@@ -5,12 +5,10 @@ import io.circe.{Decoder, Encoder}
 import io.unsecurity.hlinx.HLinx
 import io.unsecurity.hlinx.HLinx._
 import no.scalabin.http4s.directives.Conditional.ResponseDirective
-import no.scalabin.http4s.directives.Directive
+import no.scalabin.http4s.directives.{Directive, Plan}
 import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Method, Response}
 
 abstract class AbstractUnsecurity2[F[_]: Sync, U] {
-
-  def toHttpRoutes(endpoints: List[Complete]): HttpRoutes[F] //TODO: Legg denne i Serve elns, bare ikke her :)
 
   case class Endpoint[P <: HLinx.HList, R, W](method: Method,
                                               path: HLinx[P],
@@ -57,5 +55,27 @@ abstract class AbstractUnsecurity2[F[_]: Sync, U] {
     def merge(other: Complete): Complete
     def methodMap: Map[Method, Any => ResponseDirective[F]]
     def compile: PathMatcher[F, Response[F]]
+  }
+
+  def toHttpRoutes(endpoints: List[Complete]): HttpRoutes[F] = {
+    val linxesToList: Map[List[SimpleLinx], List[Complete]] = endpoints.groupBy(_.key)
+
+    val mergedRoutes: List[Complete] =
+      linxesToList.toList.map {
+        case (_, groupedEndpoints) => groupedEndpoints.reduce(_ merge _)
+      }
+
+    val compiledRoutes: List[PathMatcher[F, Response[F]]] =
+      mergedRoutes.map(_.compile)
+
+    val reducedRoutes: PathMatcher[F, Response[F]] = compiledRoutes.reduce(_ orElse _)
+
+    val PathMapping = Plan[F]().PathMapping
+
+    val service: HttpRoutes[F] = HttpRoutes.of[F](
+      PathMapping(reducedRoutes)
+    )
+
+    service
   }
 }
