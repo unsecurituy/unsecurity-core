@@ -8,7 +8,7 @@ import org.http4s.Method
 import scala.concurrent.ExecutionContext.Implicits.global
 
 object Main2 extends IOApp {
-  val unsecurity2: MyUnsecurity2[IO, String] = new MyUnsecurity2[IO, String] {}
+  val unsecurity2: Unsecurity2[IO, String] = new Unsecurity2[IO, String] {}
   import unsecurity2._
 
   val server: Server[IO] = Server[IO](
@@ -22,7 +22,7 @@ object Main2 extends IOApp {
       Endpoint(
         method = Method.GET,
         path = Root / "hello",
-        write = Write.json[String]
+        produces = Produces.json[String]
       )
     ).run { _ =>
       Directive.success("Hello world")
