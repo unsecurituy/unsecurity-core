@@ -16,7 +16,6 @@ object Main2 extends IOApp {
     host = "0.0.0.0"
   )
 
-
   val helloWorld: unsecurity2.Complete =
     unsecure(
       Endpoint(

@@ -12,8 +12,8 @@ abstract class AbstractUnsecurity2[F[_]: Sync, U] {
 
   case class Endpoint[P <: HLinx.HList, R, W](method: Method,
                                               path: HLinx[P],
-                                              accepts: EntityDecoder[F, R] = Accepts.EmptyBody, //requestType
-                                              produces: EntityEncoder[F, W] = Produces.Nothing) //responseType
+                                              accepts: EntityDecoder[F, R] = Accepts.EmptyBody,
+                                              produces: EntityEncoder[F, W] = Produces.Nothing)
 
   def secure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Secured[(P, R, U), W]
   def unsecure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Completable[(P, R), W]
@@ -52,15 +52,15 @@ abstract class AbstractUnsecurity2[F[_]: Sync, U] {
 
   trait Complete {
     def key: List[SimpleLinx]
-    def merge(other: Complete): Complete
+    def merge(other: AbstractUnsecurity2[F,U]#Complete): AbstractUnsecurity2[F,U]#Complete
     def methodMap: Map[Method, Any => ResponseDirective[F]]
     def compile: PathMatcher[F, Response[F]]
   }
 
-  def toHttpRoutes(endpoints: List[Complete]): HttpRoutes[F] = {
-    val linxesToList: Map[List[SimpleLinx], List[Complete]] = endpoints.groupBy(_.key)
+  def toHttpRoutes(endpoints: List[AbstractUnsecurity2[F,U]#Complete]): HttpRoutes[F] = {
+    val linxesToList: Map[List[SimpleLinx], List[AbstractUnsecurity2[F,U]#Complete]] = endpoints.groupBy(_.key)
 
-    val mergedRoutes: List[Complete] =
+    val mergedRoutes: List[AbstractUnsecurity2[F,U]#Complete] =
       linxesToList.toList.map {
         case (_, groupedEndpoints) => groupedEndpoints.reduce(_ merge _)
       }
