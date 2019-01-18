@@ -1,4 +1,5 @@
 package io
+
 import cats.Monad
 import io.unsecurity.hlinx.HLinx.{HLinx, HList}
 import no.scalabin.http4s.directives.Directive

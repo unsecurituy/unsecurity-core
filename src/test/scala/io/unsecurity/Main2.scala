@@ -8,7 +8,9 @@ import org.http4s.Method
 import scala.concurrent.ExecutionContext.Implicits.global
 
 object Main2 extends IOApp {
-  val unsecurity2: Unsecurity2[IO, String] = new Unsecurity2[IO, String] {}
+  val unsecurity2: Unsecurity2[IO, String, String] = new Unsecurity2[IO, String, String] {
+    override def sc: SecurityContext[IO, String, String] = ???
+  }
   import unsecurity2._
 
   val server: Server[IO] = Server[IO](

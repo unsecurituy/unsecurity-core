@@ -1,4 +1,5 @@
-package io.unsecurity
+package io
+package unsecurity
 
 import cats.effect.Sync
 import io.unsecurity.hlinx.HLinx.{HList, SimpleLinx}
@@ -6,10 +7,13 @@ import no.scalabin.http4s.directives.Conditional.ResponseDirective
 import no.scalabin.http4s.directives.Directive
 import org.http4s.headers.Allow
 import org.http4s.{EntityDecoder, EntityEncoder, Method, Response, Status}
+import org.slf4j.{Logger, LoggerFactory}
 
-class Unsecurity2[F[_]: Sync, U] extends AbstractUnsecurity2[F, U] with UnsecurityOps[F] {
+abstract class Unsecurity2[F[_]: Sync, RU, U] extends AbstractUnsecurity2[F, U] with UnsecurityOps[F] {
 
-  def sc: SecurityContext[F, U] = ???
+  private val log: Logger = LoggerFactory.getLogger(classOf[Unsecurity2[F, RU, U]])
+
+  def sc: SecurityContext[F, RU, U]
 
   case class MySecured[C, W](
       key: List[SimpleLinx],
@@ -21,42 +25,28 @@ class Unsecurity2[F[_]: Sync, U] extends AbstractUnsecurity2[F, U] with Unsecuri
       MyCompletable(
         key = key,
         pathMatcher = pathMatcher,
-        methodMap = {
-          methodMap.mapValues(
-            a2dc =>
-              a2dc.andThen(
-                dc =>
-                  dc.flatMap(
-                    c =>
-                      if (predicate(c)) Directive.success(c)
-                      else
-                        Directive.error(
-                          Response[F]()
-                            .withStatus(Status.Forbidden)
-                      )
-                )
-            ))
-        },
-        entityEncoder = entityEncoder
-      )
-    }
-    override def resolve[C2](f: C => F[C2]): Secured[C2, W] = {
-      MySecured(
-        key = key,
-        pathMatcher = pathMatcher,
         methodMap = methodMap.mapValues(
           a2dc =>
             a2dc.andThen(
               dc =>
-                dc.map { c =>
-                  val value: F[C2] = f(c)
-                  ???
-              }
-          )
-        ),
+                dc.flatMap(
+                  c =>
+                    if (predicate(c)) {
+                      log.trace("predicate failed")
+                      Directive.success(c)
+                    } else {
+
+                      Directive.error(
+                        Response[F]()
+                          .withStatus(Status.Forbidden)
+                      )
+                  }
+              )
+          )),
         entityEncoder = entityEncoder
       )
     }
+    override def resolve[C2](f: C => F[C2]): Secured[C2, W] = ???
     override def run(f: C => Directive[F, W]): Complete = {
       MyComplete(
         key = key,
@@ -86,8 +76,9 @@ class Unsecurity2[F[_]: Sync, U] extends AbstractUnsecurity2[F, U] with Unsecuri
         endpoint.method -> { pp: P =>
           implicit val entityDecoder: EntityDecoder[F, R] = endpoint.accepts
           for {
-            r    <- request.bodyAs[F, R]
-            user <- sc.authenticate
+            r       <- request.bodyAs[F, R]
+            rawUser <- sc.authenticate
+            user    <- sc.transformUser(rawUser).toSuccess(Directive.error(Response[F](Status.Unauthorized)))
           } yield {
             (pp, r, user)
           }
