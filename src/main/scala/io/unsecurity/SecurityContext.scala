@@ -2,9 +2,9 @@ package io.unsecurity
 
 import no.scalabin.http4s.directives.Directive
 
-trait SecurityContext[F[_], U1, U2] {
-  def authenticate: Directive[F, U1]
+trait SecurityContext[F[_], RU, U] {
+  def authenticate: Directive[F, RU]
   def xsrfCheck: Directive[F, String]
-  def rateLimitCheck(authenticatedIdentity: U1): Directive[F, Int]
-  def transformUser(u: U1): Option[U2]
+  def rateLimitCheck(authenticatedIdentity: RU): Directive[F, Int]
+  def transformUser(rawUser: RU): Option[U]
 }
