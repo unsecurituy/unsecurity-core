@@ -15,6 +15,8 @@ abstract class Unsecurity2[F[_]: Sync, RU, U] extends AbstractUnsecurity2[F, U] 
 
   def sc: SecurityContext[F, RU, U]
 
+  // TODO check xsrf on every secure post, put and delete
+
   case class MySecured[C, W](
       key: List[SimpleLinx],
       pathMatcher: PathMatcher[F, Any],
@@ -35,7 +37,6 @@ abstract class Unsecurity2[F[_]: Sync, RU, U] extends AbstractUnsecurity2[F, U] 
                       log.trace("predicate failed")
                       Directive.success(c)
                     } else {
-
                       Directive.error(
                         Response[F]()
                           .withStatus(Status.Forbidden)
@@ -46,7 +47,18 @@ abstract class Unsecurity2[F[_]: Sync, RU, U] extends AbstractUnsecurity2[F, U] 
         entityEncoder = entityEncoder
       )
     }
-    override def resolve[C2](f: C => F[C2]): Secured[C2, W] = ???
+    override def resolve[C2](f: C => C2): Secured[C2, W] = {
+      MySecured(
+        key = key,
+        pathMatcher = pathMatcher,
+        methodMap = methodMap.mapValues { a2dc =>
+          a2dc.andThen { dc =>
+            dc.map(c => f(c))
+          }
+        },
+        entityEncoder = entityEncoder,
+      )
+    }
     override def run(f: C => Directive[F, W]): Complete = {
       MyComplete(
         key = key,
@@ -132,7 +144,18 @@ abstract class Unsecurity2[F[_]: Sync, RU, U] extends AbstractUnsecurity2[F, U] 
       )
     }
 
-    override def resolve[C2](f: C => F[C2]): Completable[C2, W] = ???
+    override def resolve[C2](f: C => C2): Completable[C2, W] = {
+      MyCompletable(
+        key = key,
+        pathMatcher = pathMatcher,
+        methodMap = methodMap.mapValues { a2dc =>
+          a2dc.andThen { dc =>
+            dc.map(c => f(c))
+          }
+        },
+        entityEncoder = entityEncoder
+      )
+    }
   }
 
   case class MyComplete(
