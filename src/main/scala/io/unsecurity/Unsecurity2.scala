@@ -15,8 +15,6 @@ abstract class Unsecurity2[F[_]: Sync, RU, U] extends AbstractUnsecurity2[F, U] 
 
   def sc: SecurityContext[F, RU, U]
 
-  // TODO check xsrf on every secure post, put and delete
-
   case class MySecured[C, W](
       key: List[SimpleLinx],
       pathMatcher: PathMatcher[F, Any],
@@ -86,8 +84,18 @@ abstract class Unsecurity2[F[_]: Sync, RU, U] extends AbstractUnsecurity2[F, U] 
       pathMatcher = createPathMatcher(endpoint.path).asInstanceOf[PathMatcher[F, Any]],
       methodMap = Map(
         endpoint.method -> { pp: P =>
+          val checkXsrfOrNothing: Directive[F, String] =
+            if (endpoint.method == Method.PUT ||
+                endpoint.method == Method.POST ||
+                endpoint.method == Method.DELETE) {
+              sc.xsrfCheck
+            } else {
+              Directive.success("xsrf not checked")
+            }
+
           implicit val entityDecoder: EntityDecoder[F, R] = endpoint.accepts
           for {
+            _       <- checkXsrfOrNothing
             r       <- request.bodyAs[F, R]
             rawUser <- sc.authenticate
             user    <- sc.transformUser(rawUser).toSuccess(Directive.error(Response[F](Status.Unauthorized)))
