@@ -90,8 +90,8 @@ trait UnsecurityOps[F[_]] extends DirectiveOps[F] with RequestDirectives[F] {
     request.bodyAs[F, X](syncEvidence, jsonOf[F, X])
   }
 
-  def requestCookies()(implicit syncEvidence: Sync[F]): Directive[F, NonEmptyList[RequestCookie]] = {
-    request.cookies.flatMap(_.toSuccess(BadRequest("Cookies not found in request")))
+  def requestCookies()(implicit syncEvidence: Sync[F]): Directive[F, List[RequestCookie]] = {
+    request.cookies.map(maybeCookies => maybeCookies.toList.flatMap(cookies => cookies.toList))
   }
 
   def requestHeader(name: String)(implicit syncEvidence: Sync[F]): Directive[F, Option[Header]] =
