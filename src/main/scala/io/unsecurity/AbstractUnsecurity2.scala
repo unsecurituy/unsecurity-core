@@ -12,8 +12,9 @@ abstract class AbstractUnsecurity2[F[_]: Sync, U] {
 
   case class Endpoint[P <: HLinx.HList, R, W](method: Method,
                                               path: HLinx[P],
-                                              accepts: EntityDecoder[F, R] = Accepts.EmptyBody,
-                                              produces: EntityEncoder[F, W] = Produces.Nothing)
+                                              produces: EntityEncoder[F, W] = Produces.Nothing,
+                                              accepts: EntityDecoder[F, R] = Accepts.EmptyBody
+                                             )
 
   def secure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Secured[(P, R, U), W]
   def unsecure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Completable[(P, R), W]
