@@ -16,6 +16,9 @@ abstract class AbstractUnsecurity2[F[_]: Sync, U] {
                                               accepts: EntityDecoder[F, R] = Accepts.EmptyBody
                                              )
 
+  type PathMatcher[F[_], A] = PartialFunction[String, Directive[F, A]]
+
+
   def secure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Secured[(P, R, U), W]
   def unsecure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Completable[(P, R), W]
 

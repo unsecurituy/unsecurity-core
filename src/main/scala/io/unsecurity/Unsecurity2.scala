@@ -1,8 +1,9 @@
 package io
 package unsecurity
 
+import cats.Monad
 import cats.effect.Sync
-import io.unsecurity.hlinx.HLinx.{HList, SimpleLinx}
+import io.unsecurity.hlinx.HLinx.{HLinx, HList, SimpleLinx}
 import no.scalabin.http4s.directives.Conditional.ResponseDirective
 import no.scalabin.http4s.directives.Directive
 import org.http4s.headers.Allow
@@ -190,4 +191,33 @@ abstract class Unsecurity2[F[_]: Sync, RU, U] extends AbstractUnsecurity2[F, U] 
       }
     }
   }
+
+  def createPathMatcher[F[_]: Monad, PathParams <: HList](route: HLinx[PathParams]): PathMatcher[F, PathParams] =
+    new PartialFunction[String, Directive[F, PathParams]] {
+      override def isDefinedAt(x: String): Boolean = {
+        if (route.capture(x).isDefined) {
+          log.trace(s"""Match: "$x" = /${route.toSimple.reverse.mkString("/")}""")
+          true
+        } else {
+//          log.trace(s"""Not match: "$x" != ${route.toSimple.reverse.mkString("/")}""")
+          false
+        }
+      }
+
+      override def apply(v1: String): Directive[F, PathParams] = {
+        val value: Either[String, PathParams] = route.capture(v1).get
+
+        value match {
+          case Left(errorMsg) =>
+            Directive.failure(
+              Response(Status.BadRequest)
+                .withEntity(errorMsg)
+            )
+
+          case Right(params) =>
+            Directive.success(params)
+
+        }
+      }
+    }
 }

@@ -31,8 +31,12 @@ object HLinx {
   // TODO good error messages when overlapping
   // TODO wrapper class instead of List
   sealed trait SimpleLinx
-  case class SimpleStatic(s: String) extends SimpleLinx
-  case object SimplePathParam        extends SimpleLinx
+  case class SimpleStatic(segment: String) extends SimpleLinx {
+    override def toString: String = segment
+  }
+  case class SimplePathParam(name: String) extends SimpleLinx {
+    override def toString: String = s"{$name}"
+  }
 
   sealed trait HLinx[T <: HList] {
     def /(element: String): Static[T] = {
@@ -41,7 +45,7 @@ object HLinx {
           Static(acc, e)
         }
     }
-    def /[H](h: Param[H])                             = Variable(this, h.converter, h.name)
+    def /[H](h: Param[H]) = Variable(this, h.converter, h.name)
     // TODO reverse path params on capture
     def capture(s: String): Option[Either[String, T]] = extract(splitPath(s).reverse)
     def extract(s: List[String]): Option[Either[String, T]]
@@ -76,7 +80,8 @@ object HLinx {
     def toSimple: List[SimpleLinx] =
       SimpleStatic(element) :: parent.toSimple
   }
-  case class Variable[H, T <: HList](parent: HLinx[T], P: PathParamConverter[H], element: String) extends HLinx[H ::: T] {
+  case class Variable[H, T <: HList](parent: HLinx[T], P: PathParamConverter[H], element: String)
+      extends HLinx[H ::: T] {
     override def extract(s: List[String]): Option[Either[String, H ::: T]] = s match {
       case h :: rest =>
         parent
@@ -99,7 +104,7 @@ object HLinx {
       }
     }
     override def toSimple: List[SimpleLinx] =
-      SimplePathParam :: parent.toSimple
+      SimplePathParam(element) :: parent.toSimple
   }
 
   implicit class S0(private val hlist: HNil) extends AnyVal {
