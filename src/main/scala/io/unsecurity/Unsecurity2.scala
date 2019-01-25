@@ -32,7 +32,6 @@ abstract class Unsecurity2[F[_]: Sync, RU, U] extends AbstractUnsecurity2[F, U] 
                 dc.flatMap(
                   c =>
                     if (predicate(c)) {
-                      log.trace("predicate failed")
                       Directive.success(c)
                     } else {
                       Directive.error(
