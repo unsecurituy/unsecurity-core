@@ -12,7 +12,7 @@ import org.slf4j.{Logger, LoggerFactory}
 
 abstract class Unsecurity2[F[_]: Sync, RU, U] extends AbstractUnsecurity2[F, U] with UnsecurityOps[F] {
 
-  private val log: Logger = LoggerFactory.getLogger(classOf[Unsecurity2[F, RU, U]])
+  override val log: Logger = LoggerFactory.getLogger(classOf[Unsecurity2[F, RU, U]])
 
   def sc: SecurityContext[F, RU, U]
 

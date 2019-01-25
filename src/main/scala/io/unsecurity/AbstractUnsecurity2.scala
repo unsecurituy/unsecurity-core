@@ -7,17 +7,18 @@ import io.unsecurity.hlinx.HLinx._
 import no.scalabin.http4s.directives.Conditional.ResponseDirective
 import no.scalabin.http4s.directives.{Directive, Plan}
 import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Method, Response}
+import org.slf4j.Logger
 
 abstract class AbstractUnsecurity2[F[_]: Sync, U] {
 
   case class Endpoint[P <: HLinx.HList, R, W](method: Method,
                                               path: HLinx[P],
                                               produces: EntityEncoder[F, W] = Produces.Nothing,
-                                              accepts: EntityDecoder[F, R] = Accepts.EmptyBody
-                                             )
+                                              accepts: EntityDecoder[F, R] = Accepts.EmptyBody)
+
+  def log: Logger
 
   type PathMatcher[F[_], A] = PartialFunction[String, Directive[F, A]]
-
 
   def secure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Secured[(P, R, U), W]
   def unsecure[P <: HList, R, W](endpoint: Endpoint[P, R, W]): Completable[(P, R), W]
@@ -56,18 +57,32 @@ abstract class AbstractUnsecurity2[F[_]: Sync, U] {
 
   trait Complete {
     def key: List[SimpleLinx]
-    def merge(other: AbstractUnsecurity2[F,U]#Complete): AbstractUnsecurity2[F,U]#Complete
+    def merge(other: AbstractUnsecurity2[F, U]#Complete): AbstractUnsecurity2[F, U]#Complete
     def methodMap: Map[Method, Any => ResponseDirective[F]]
     def compile: PathMatcher[F, Response[F]]
   }
 
-  def toHttpRoutes(endpoints: List[AbstractUnsecurity2[F,U]#Complete]): HttpRoutes[F] = {
-    val linxesToList: Map[List[SimpleLinx], List[AbstractUnsecurity2[F,U]#Complete]] = endpoints.groupBy(_.key)
+  def toHttpRoutes(endpoints: List[AbstractUnsecurity2[F, U]#Complete]): HttpRoutes[F] = {
+//    log.trace("all endpoints")
+//    endpoints.foreach { e =>
+//      e.methodMap.keys.foreach { method =>
+//        log.trace(s"""${method.name}: /${e.key.mkString("/")}""")
+//      }
+//    }
 
-    val mergedRoutes: List[AbstractUnsecurity2[F,U]#Complete] =
+    val linxesToList: Map[List[SimpleLinx], List[AbstractUnsecurity2[F, U]#Complete]] = endpoints.groupBy(_.key)
+
+    val mergedRoutes: List[AbstractUnsecurity2[F, U]#Complete] =
       linxesToList.toList.map {
         case (_, groupedEndpoints) => groupedEndpoints.reduce(_ merge _)
       }
+
+    log.trace("Grouped endpoints:")
+    mergedRoutes.foreach { r =>
+      log.trace(
+        s"""/${r.key.mkString("/")}: ${r.methodMap.keys.map { _.name }.mkString(", ")}"""
+      )
+    }
 
     val compiledRoutes: List[PathMatcher[F, Response[F]]] =
       mergedRoutes.map(_.compile)
