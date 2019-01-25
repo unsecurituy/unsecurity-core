@@ -79,7 +79,7 @@ abstract class AbstractUnsecurity2[F[_]: Sync, U] {
 
     log.trace("Grouped endpoints:")
     mergedRoutes.foreach { r =>
-      log.trace(
+      log.info(
         s"""/${r.key.mkString("/")}: ${r.methodMap.keys.map { _.name }.mkString(", ")}"""
       )
     }
