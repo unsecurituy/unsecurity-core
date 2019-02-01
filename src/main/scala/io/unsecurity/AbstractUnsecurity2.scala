@@ -8,6 +8,7 @@ import no.scalabin.http4s.directives.Conditional.ResponseDirective
 import no.scalabin.http4s.directives.{Directive, Plan}
 import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Method, Response}
 import org.slf4j.Logger
+import Ordering.Implicits._
 
 abstract class AbstractUnsecurity2[F[_]: Sync, U] {
 
@@ -73,11 +74,13 @@ abstract class AbstractUnsecurity2[F[_]: Sync, U] {
     val linxesToList: Map[List[SimpleLinx], List[AbstractUnsecurity2[F, U]#Complete]] = endpoints.groupBy(_.key)
 
     val mergedRoutes: List[AbstractUnsecurity2[F, U]#Complete] =
-      linxesToList.toList.map {
-        case (_, groupedEndpoints) => groupedEndpoints.reduce(_ merge _)
-      }
+      linxesToList.toList
+        .map {
+          case (_, groupedEndpoints) => groupedEndpoints.reduce(_ merge _)
+        }
+        .sortBy(_.key)
 
-    log.trace("Grouped endpoints:")
+    log.trace("Ordered and grouped endpoints:")
     mergedRoutes.foreach { r =>
       log.info(
         s"""/${r.key.mkString("/")}: ${r.methodMap.keys.map { _.name }.mkString(", ")}"""

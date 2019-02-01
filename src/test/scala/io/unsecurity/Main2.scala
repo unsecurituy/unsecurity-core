@@ -1,7 +1,7 @@
 package io.unsecurity
 
 import cats.effect.{ExitCode, IO, IOApp}
-import io.unsecurity.hlinx.HLinx.Root
+import io.unsecurity.hlinx.HLinx._
 import no.scalabin.http4s.directives.Directive
 import org.http4s.Method
 
@@ -29,10 +29,28 @@ object Main2 extends IOApp {
       Directive.success("Hello world")
     }
 
+  val collidingHello =
+    unsecure(
+      Endpoint(
+        Method.GET,
+        Root / param[String]("collideWithHello"),
+        Produces.json[String]
+      )
+    ).run {
+      case (collide ::: HNil, _) =>
+        Directive.success(
+          s"Hello, $collide"
+        )
+    }
+
   override def run(args: List[String]): IO[ExitCode] = {
     import cats.implicits._
 
-    val httpRoutes = toHttpRoutes(List(helloWorld))
+    val httpRoutes = toHttpRoutes(
+      List(
+        helloWorld,
+        collidingHello
+      ))
 
     server
       .serve(httpRoutes)
